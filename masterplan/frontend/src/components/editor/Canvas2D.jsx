@@ -283,7 +283,11 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
 
   const getAmenityTextureKey = (amenity) => {
     if (!amenity) return null;
-    if (amenity.type === 'pool' || amenity.label?.toLowerCase().includes('pool')) return 'swimmingPoolTopdown';
+    if (amenity.type === 'pool' || amenity.label?.toLowerCase().includes('pool')) {
+      const hash = parseInt(amenity.id.replace(/\D/g, '') || '0', 10) || Math.floor(Math.random() * 3);
+      const variants = ['swimmingPoolTopdown1', 'swimmingPoolTopdown2', 'swimmingPoolTopdown3'];
+      return variants[hash % 3];
+    }
     if (amenity.type === 'sports' || amenity.label?.toLowerCase().includes('tennis')) return 'tennisCourtTopdown';
     if (amenity.type === 'kids' || amenity.type === 'playground') return 'kidsPlaygroundTopdown';
     if (amenity.type === 'central_lawn' || amenity.type === 'event_lawn') return 'centralLawnTopdown';
