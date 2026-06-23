@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -11,6 +9,8 @@ services:
       - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
 
   frontend:
     build:
@@ -25,3 +25,10 @@ services:
       - backend
     environment:
       - VITE_API_URL=http://backend:8000
+
+  redis:
+    image: redis:alpine
+    container_name: masterplan-redis
+    ports:
+      - "6379:6379"
+    restart: always
