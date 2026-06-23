@@ -9,6 +9,7 @@ services:
       - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       - redis
 
