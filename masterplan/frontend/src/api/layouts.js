@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8000/api/layouts';
+const API_BASE = '/api/layouts';
 
 export async function fetchLatestLayout(projectId) {
   const res = await axios.get(`${API_BASE}/${projectId}`);

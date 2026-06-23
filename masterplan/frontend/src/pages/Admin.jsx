@@ -10,7 +10,7 @@ export default function Admin() {
   useEffect(() => {
     const fetchUsage = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/ai/usage');
+        const response = await fetch('/api/ai/usage');
         if (!response.ok) throw new Error('Failed to fetch AI usage data');
         const data = await response.json();
         setUsageData(data);

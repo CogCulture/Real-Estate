@@ -218,7 +218,7 @@ export default function RenderStatus() {
 
                     <div className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex justify-center items-center shadow-md group">
                       <img
-                        src={`http://localhost:8000${job.output_url}`}
+                        src={`${job.output_url}`}
                         alt="Blender Final Render"
                         className="max-h-[360px] object-contain w-full"
                       />
@@ -226,7 +226,7 @@ export default function RenderStatus() {
 
                     <div className="flex justify-end gap-2.5 mt-2">
                       <a 
-                        href={`http://localhost:8000${getDownloadUrl(job.id)}`}
+                        href={`${getDownloadUrl(job.id)}`}
                         download
                         className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-semibold text-xs transition-colors shadow-lg shadow-emerald-600/10"
                       >

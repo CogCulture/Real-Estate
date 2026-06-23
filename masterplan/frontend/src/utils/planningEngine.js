@@ -67,7 +67,7 @@ Distribute them around the central amenity zone at these approximate positions:
   let aiLayout = null;
 
   try {
-    const response = await fetch('http://localhost:8000/api/ai/suggest', {
+    const response = await fetch('/api/ai/suggest', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
