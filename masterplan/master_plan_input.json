@@ -1,0 +1,88 @@
+{
+  "project_setup": {
+    "steps": [
+      {
+        "step_number": 1,
+        "description": "Create a project",
+        "functionality": "Form",
+        "fields": ["Name", "Total Area", "Location/Sector"]
+      },
+      {
+        "step_number": 2,
+        "description": "Select the Project site",
+        "functionality": "Drop Down",
+        "options": ["Select on Google", "Enter Latitude Longitude", "Enter link to location"]
+      },
+      {
+        "step_number": 3,
+        "description": "Project Specification",
+        "functionality": "Tick Box",
+        "options": ["Township", "High Rise", "Mid Rise", "Low Rise", "Independent Floors", "Plots", "Villas"],
+        "conditional_logic": {
+          "trigger": "On the basis of above selection",
+          "action_1": "The tool should also ask the unit specifications (i.e. 1 BHK, 2 BHK, 3 BHK, 3.5 BHK, 4 BHK, penthouse).",
+          "action_2": "The Tool should also suggest the recommended unit sizes."
+        }
+      },
+      {
+        "step_number": 4,
+        "description": "Define your Clubhouse",
+        "functionality": "Tick Box",
+        "categories": {
+          "Sports & Fitness": ["Gymnasium", "Fitness Studio", "CrossFit Zone", "Yoga Deck", "Pilates Studio", "Aerobics Studio", "Indoor Cycling Studio", "Squash Court", "Badminton Court", "Table Tennis", "Billiards Room", "Indoor Games Room", "Multi-purpose Court", "Pickleball Court", "Bowling Alley", "Golf Simulator", "Cricket Practice"],
+          "Aquatic Facilities": ["Swimming Pool", "Kids' Pool", "Infinity Pool", "Lap Pool", "Pool Deck", "Poolside Lounge"],
+          "Wellness & Spa": ["Spa", "Sauna", "Steam Room", "Massage Room", "Wellness Centre", "Salon & Grooming", "Recovery Lounge"],
+          "Entertainment & Recreation": ["Mini Theatre", "Multipurpose Hall", "Party Hall", "Banquet Hall", "Gaming Arcade", "VR Gaming Zone", "Library", "Reading Lounge", "Music Room", "Hobby Room"],
+          "Family & Kids": ["Kids' Play Area", "Indoor Kids' Zone", "Creche / Daycare", "Teen Lounge", "Arts & Crafts Studio", "Learning Centre"],
+          "Business & Work": ["Business & Work", "Co-working Space", "Business Centre", "Meeting Rooms", "Private Work Pods", "Podcast Studio"],
+          "Food & Social": ["Café", "Restaurant", "Juice Bar", "Community Kitchen", "Conference Room", "Private Dining Room", "Outdoor Dining", "Barbecue Area"],
+          "Outdoor Leisure": ["Amphitheatre", "Outdoor Lounge", "Event Lawn", "Party Lawn", "Terrace Garden", "Viewing Deck", "Zen Garden", "Reflexology Path"],
+          "Senior Citizen Amenities": ["Senior Citizens Area", "Card Room", "Chess Room", "Wellness Zone", "Walking Track"],
+          "Luxury & Premium Amenities": ["Wine Tasting Room", "Cigar Lounge", "Golf Putting Green", "Sky Lounge", "Observatory Deck", "Private Screening", "Luxury Guest Suites", "Concierge Desk"]
+        }
+      },
+      {
+        "step_number": 5,
+        "description": "Safety and Security",
+        "functionality": "Drop Down",
+        "options": ["3 Tier", "4 Tier", "5 Tier"],
+        "conditional_logic": {
+          "trigger": "On the basis of the above selection",
+          "action": "The tool should be intelligent enough to mark the security levels on entry, parkings, tower lobby, etc."
+        }
+      },
+      {
+        "step_number": 6,
+        "description": "Define your Basement",
+        "functionality": "Form",
+        "fields": ["Parking per unit"]
+      },
+      {
+        "step_number": 7,
+        "description": "Sustainability Features",
+        "functionality": "Tick Box",
+        "options": ["Rain water harvesting", "Solar panels", "Sewage Treatment", "Waste Management", "Air quality monitoring", "Indoor air purification", "Low-VOC paints", "EV charging station", "Heat-reflective paint"]
+      },
+      {
+        "step_number": 8,
+        "description": "Green Building & Design",
+        "functionality": "Tick Box",
+        "categories": {
+          "Core": ["LEED Gold / Platinum", "IGBC Gold / Platinum", "GRIHA 4-Star / 5-Star", "WELL Certified"],
+          "Premium differentiators": ["Fitwel", "WiredScore", "SmartScore", "EDGE"],
+          "Future-Focused": ["Net Zero Carbon", "Net Zero Energy", "Water Positive"]
+        }
+      }
+    ],
+    "additional_requirements": {
+      "Green Area": {
+        "functionality": "Fill in",
+        "examples": ["70%", "80%"]
+      },
+      "Theme": {
+        "options": ["European", "Wellness Centric", "Luxury", "Forest Themed"]
+      },
+      "Compliance": ["RERA Guidelines"]
+    }
+  }
+}

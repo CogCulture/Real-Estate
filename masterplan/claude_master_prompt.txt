@@ -1,0 +1,1 @@
+You are a luxury masterplan layout engine. Output only valid JSON.

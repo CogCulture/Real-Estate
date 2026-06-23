@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased overflow-x-hidden;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded hover:bg-slate-400;
+}
+
+/* Konva canvas container styling */
+.konvajs-content {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  background-color: transparent;
+  overflow: hidden;
+}
+
+/* Leaflet map styles */
+.leaflet-container {
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  background-color: #f1f5f9 !important;
+}
+
+/* Force Leaflet Draw SVG paths to be visible */
+.leaflet-overlay-pane svg path {
+  stroke: #4f46e5 !important;
+  stroke-width: 3px !important;
+  stroke-opacity: 0.95 !important;
+  fill: #4f46e5 !important;
+  fill-opacity: 0.15 !important;
+}
+
+.leaflet-draw-guide-dash {
+  stroke: #4f46e5 !important;
+  stroke-width: 2px !important;
+  stroke-opacity: 0.8 !important;
+}
+
+/* Ensure Leaflet Draw tooltips are fully visible */
+.leaflet-draw-tooltip {
+  background: #0f172a !important;
+  border: 1px solid #1e293b !important;
+  color: #ffffff !important;
+  font-family: sans-serif !important;
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+  z-index: 2000 !important;
+}
+
+.leaflet-draw-tooltip-subtext {
+  color: #94a3b8 !important;
+}
