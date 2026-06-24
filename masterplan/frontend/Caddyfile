@@ -1,4 +1,5 @@
 {$DOMAIN_NAME:localhost} {
+    tls internal
     encode gzip
     root * /srv
     route {
