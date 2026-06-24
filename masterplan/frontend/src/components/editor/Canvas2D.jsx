@@ -377,38 +377,56 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
       const isBoundary = road.label && road.label.toLowerCase().includes('boundary');
       if (!isBoundary) return true;
 
+      const pts = road.points_px || [];
+      if (pts.length < 2) return true;
+
       // 1. Check if near any entry gate
       for (const gate of entryGates) {
         const gateCx = gate.x_px + gate.width_px / 2;
         const gateCy = gate.y_px + gate.height_px / 2;
-        const gateSize = Math.max(gate.width_px, gate.height_px);
         
-        const pts = road.points_px || [];
-        if (pts.length >= 2) {
-          const d = getDistancePtToSeg(gateCx, gateCy, pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
-          if (d < gateSize * 1.1) {
+        const d = getDistancePtToSeg(gateCx, gateCy, pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
+        const clearRadius = Math.max(gate.width_px, gate.height_px) * 0.6 + (road.width_px || 20) / 2;
+        if (d < clearRadius) {
+          return false;
+        }
+      }
+
+      // 2. Check if near any non-boundary road endpoint (Junction Clearing)
+      for (const nbRoad of nonBoundaryRoads) {
+        const nbPts = nbRoad.points_px || [];
+        if (nbPts.length < 2) continue;
+        
+        const threshold = (nbRoad.width_px || 20) / 2 + (road.width_px || 20) / 2 + 5;
+        const roadMidX = (pts[0][0] + pts[1][0]) / 2;
+        const roadMidY = (pts[0][1] + pts[1][1]) / 2;
+
+        const ends = [nbPts[0], nbPts[nbPts.length - 1]];
+        for (const end of ends) {
+          const dMid = Math.hypot(roadMidX - end[0], roadMidY - end[1]);
+          const dPt1 = Math.hypot(pts[0][0] - end[0], pts[0][1] - end[1]);
+          const dPt2 = Math.hypot(pts[1][0] - end[0], pts[1][1] - end[1]);
+          
+          if (dMid < threshold || dPt1 < threshold || dPt2 < threshold) {
             return false;
           }
         }
       }
 
-      // 2. Check if boundary pedestrian path is crossed by a non-boundary road
+      // 3. Check if boundary pedestrian path is crossed by a non-boundary road
       const isPath = road.label && road.label.toLowerCase().includes('path');
       if (isPath) {
-        const pts = road.points_px || [];
-        if (pts.length >= 2) {
-          for (const nbRoad of nonBoundaryRoads) {
-            const nbPts = nbRoad.points_px || [];
-            for (let i = 0; i < nbPts.length - 1; i++) {
-              if (doSegmentsIntersect(pts[0], pts[1], nbPts[i], nbPts[i+1])) {
-                return false;
-              }
-              const d1 = getDistancePtToSeg(nbPts[i][0], nbPts[i][1], pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
-              const d2 = getDistancePtToSeg(nbPts[i+1][0], nbPts[i+1][1], pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
-              const threshold = (nbRoad.width_px || 20) / 2 + 5;
-              if (d1 < threshold || d2 < threshold) {
-                return false;
-              }
+        for (const nbRoad of nonBoundaryRoads) {
+          const nbPts = nbRoad.points_px || [];
+          for (let i = 0; i < nbPts.length - 1; i++) {
+            if (doSegmentsIntersect(pts[0], pts[1], nbPts[i], nbPts[i+1])) {
+              return false;
+            }
+            const d1 = getDistancePtToSeg(nbPts[i][0], nbPts[i][1], pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
+            const d2 = getDistancePtToSeg(nbPts[i+1][0], nbPts[i+1][1], pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
+            const threshold = (nbRoad.width_px || 20) / 2 + 5;
+            if (d1 < threshold || d2 < threshold) {
+              return false;
             }
           }
         }
@@ -1027,6 +1045,7 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
     return 'buildingResidential';
   };
 
+  const getAmenityTextureKey = (amenity) => {
     if (!amenity) return null;
     if (amenity.type === 'pool' || amenity.label?.toLowerCase().includes('pool')) {
       return null; // Force pool to use vector shapes instead of an image
@@ -2022,8 +2041,19 @@ out skel qt;`;
     // Handle decoration drop
     if (dragType?.startsWith('decoration_')) {
       const variant = dragType.split('_')[1];
-      const widthM = variant === 'roundabout' ? 24 : 16;
-      const heightM = variant === 'roundabout' ? 24 : 16;
+      const getDecoSize = (v) => {
+        switch(v) {
+          case 'roundabout': return [24, 24];
+          case 'gazebo': return [8, 8];
+          case 'bench_row': return [10, 3];
+          case 'lamp_row': return [12, 2];
+          case 'hedge_maze': return [14, 14];
+          case 'flower_bed': return [8, 6];
+          case 'sculpture': return [4, 4];
+          case 'fountain_plaza': default: return [16, 16];
+        }
+      };
+      const [widthM, heightM] = getDecoSize(variant);
       const widthPx = widthM * scale;
       const heightPx = heightM * scale;
       const snappedX = snapValue(pos.x);
@@ -2032,7 +2062,7 @@ out skel qt;`;
       const newAmenity = {
         id: `amenity_${Date.now()}`,
         type: 'decoration',
-        label: variant === 'roundabout' ? 'Grand Roundabout' : 'Fountain Plaza',
+        label: variant.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
         x_px: snappedX - widthPx / 2,
         y_px: snappedYVal - heightPx / 2,
         width_px: widthPx,
@@ -2742,15 +2772,26 @@ out skel qt;`;
 
     if (meta.activePlacementCategory === 'decoration') {
       const variant = meta.activePlacementVariant || 'roundabout';
-      const widthM = variant === 'roundabout' ? 24 : 16;
-      const heightM = variant === 'roundabout' ? 24 : 16;
+      const getDecoSize = (v) => {
+        switch(v) {
+          case 'roundabout': return [24, 24];
+          case 'gazebo': return [8, 8];
+          case 'bench_row': return [10, 3];
+          case 'lamp_row': return [12, 2];
+          case 'hedge_maze': return [14, 14];
+          case 'flower_bed': return [8, 6];
+          case 'sculpture': return [4, 4];
+          case 'fountain_plaza': default: return [16, 16];
+        }
+      };
+      const [widthM, heightM] = getDecoSize(variant);
       const widthPx = widthM * scale;
       const heightPx = heightM * scale;
       
       const newAmenity = {
         id: `amenity_${Date.now()}`,
         type: 'decoration',
-        label: variant === 'roundabout' ? 'Grand Roundabout' : 'Fountain Plaza',
+        label: variant.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
         x_px: snappedX - widthPx / 2,
         y_px: snappedY - heightPx / 2,
         width_px: widthPx,
@@ -3980,6 +4021,81 @@ out skel qt;`;
             );
           })}
 
+          {/* Junction Fills and Gate Connectors */}
+          {roads && (() => {
+            const boundaryRoads = roads.filter(r => r.label && r.label.toLowerCase().includes('boundary'));
+            const internalRoads = roads.filter(r => !r.label || !r.label.toLowerCase().includes('boundary'));
+            const gates = amenities ? amenities.filter(a => a.type === 'entry_exit') : [];
+            const connectors = [];
+
+            // 1. Internal Road to Boundary Junction Fills
+            internalRoads.forEach(intRoad => {
+              const pts = intRoad.points_px || [];
+              if (pts.length < 2) return;
+              const intWidth = intRoad.width_px || 20;
+              
+              const ends = [pts[0], pts[pts.length - 1]];
+              ends.forEach(end => {
+                boundaryRoads.forEach(bRoad => {
+                  const bPts = bRoad.points_px || [];
+                  if (bPts.length < 2) return;
+                  const bMidX = (bPts[0][0] + bPts[1][0]) / 2;
+                  const bMidY = (bPts[0][1] + bPts[1][1]) / 2;
+                  const bWidth = bRoad.width_px || 20;
+                  
+                  const threshold = bWidth / 2 + intWidth / 2 + 5;
+                  if (Math.hypot(end[0] - bMidX, end[1] - bMidY) < threshold ||
+                      Math.hypot(end[0] - bPts[0][0], end[1] - bPts[0][1]) < threshold ||
+                      Math.hypot(end[0] - bPts[1][0], end[1] - bPts[1][1]) < threshold) {
+                    
+                    connectors.push(
+                      <Line
+                        key={`jct-${intRoad.id}-${bRoad.id}`}
+                        points={[end[0], end[1], bPts[0][0], bPts[0][1], bPts[1][0], bPts[1][1]]}
+                        stroke={intRoad.type === 'pedestrian' ? (stonePattern || '#e2c99f') : '#5C6670'}
+                        strokeWidth={intWidth}
+                        lineJoin="round"
+                        lineCap="round"
+                        listening={false}
+                      />
+                    );
+                  }
+                });
+              });
+            });
+
+            // 2. Gate to Boundary Connectors
+            gates.forEach(gate => {
+              const gateCx = gate.x_px + gate.width_px / 2;
+              const gateCy = gate.y_px + gate.height_px / 2;
+              const clearRadius = Math.max(gate.width_px, gate.height_px) * 0.6 + 10;
+              
+              boundaryRoads.forEach(bRoad => {
+                const bPts = bRoad.points_px || [];
+                if (bPts.length < 2) return;
+                
+                const d1 = Math.hypot(bPts[0][0] - gateCx, bPts[0][1] - gateCy);
+                const d2 = Math.hypot(bPts[1][0] - gateCx, bPts[1][1] - gateCy);
+                
+                if ((d1 >= clearRadius && d1 < clearRadius + 30) || (d2 >= clearRadius && d2 < clearRadius + 30)) {
+                  const pt = d1 < d2 ? bPts[0] : bPts[1];
+                  connectors.push(
+                    <Line
+                      key={`gateconn-${gate.id}-${bRoad.id}`}
+                      points={[pt[0], pt[1], gateCx, gateCy]}
+                      stroke={bRoad.type === 'pedestrian' ? (stonePattern || '#e2c99f') : '#5C6670'}
+                      strokeWidth={bRoad.width_px}
+                      lineCap="round"
+                      listening={false}
+                    />
+                  );
+                }
+              });
+            });
+
+            return <>{connectors}</>;
+          })()}
+
           {/* Active Road Drawing Draft */}
           {roadPoints.length > 0 && (
             <Group>
@@ -4718,9 +4834,128 @@ out skel qt;`;
                         listening={false}
                       />
                     </>
+                  ) : amenity.properties?.variant === 'gazebo' ? (
+                    <>
+                      {/* Base shadow */}
+                      <Ellipse
+                        x={bbox.cx}
+                        y={bbox.cy}
+                        radiusX={bbox.width * 0.45}
+                        radiusY={bbox.height * 0.45}
+                        fill="rgba(0,0,0,0.1)"
+                        listening={activeTool === 'SELECT'}
+                      />
+                      {/* Gazebo Roof (Octagon) */}
+                      <Line
+                        points={[
+                          bbox.cx, bbox.minY,
+                          bbox.maxX - bbox.width*0.15, bbox.minY + bbox.height*0.15,
+                          bbox.maxX, bbox.cy,
+                          bbox.maxX - bbox.width*0.15, bbox.maxY - bbox.height*0.15,
+                          bbox.cx, bbox.maxY,
+                          bbox.minX + bbox.width*0.15, bbox.maxY - bbox.height*0.15,
+                          bbox.minX, bbox.cy,
+                          bbox.minX + bbox.width*0.15, bbox.minY + bbox.height*0.15
+                        ]}
+                        closed={true}
+                        fill="#8d6e63"
+                        stroke="#5d4037"
+                        strokeWidth={2}
+                        listening={false}
+                      />
+                      {/* Roof struts */}
+                      <Line points={[bbox.minX, bbox.cy, bbox.maxX, bbox.cy]} stroke="#a1887f" strokeWidth={1.5} listening={false} />
+                      <Line points={[bbox.cx, bbox.minY, bbox.cx, bbox.maxY]} stroke="#a1887f" strokeWidth={1.5} listening={false} />
+                      <Line points={[bbox.minX + bbox.width*0.15, bbox.minY + bbox.height*0.15, bbox.maxX - bbox.width*0.15, bbox.maxY - bbox.height*0.15]} stroke="#a1887f" strokeWidth={1.5} listening={false} />
+                      <Line points={[bbox.maxX - bbox.width*0.15, bbox.minY + bbox.height*0.15, bbox.minX + bbox.width*0.15, bbox.maxY - bbox.height*0.15]} stroke="#a1887f" strokeWidth={1.5} listening={false} />
+                      {/* Center finial */}
+                      <Circle cx={bbox.cx} cy={bbox.cy} radius={Math.min(bbox.width, bbox.height)*0.1} fill="#8d6e63" stroke="#5d4037" strokeWidth={1.5} listening={false} />
+                    </>
+                  ) : amenity.properties?.variant === 'bench_row' ? (
+                    <>
+                      {/* Paved path underneath */}
+                      <Line
+                        points={[bbox.minX, bbox.cy, bbox.maxX, bbox.cy]}
+                        stroke="#e2c99f"
+                        strokeWidth={bbox.height * 0.4}
+                        lineCap="round"
+                        listening={activeTool === 'SELECT'}
+                      />
+                      {/* 3 Benches */}
+                      {[0.15, 0.5, 0.85].map((pos, i) => (
+                        <Group key={`bench-${i}`} x={bbox.minX + bbox.width * pos} y={bbox.minY + bbox.height * 0.25} listening={false}>
+                          <Rect x={-bbox.width*0.08} y={0} width={bbox.width*0.16} height={bbox.height*0.3} fill="#8d6e63" stroke="#5d4037" strokeWidth={1} cornerRadius={2} />
+                          <Rect x={-bbox.width*0.08} y={-bbox.height*0.1} width={bbox.width*0.16} height={bbox.height*0.15} fill="#a1887f" cornerRadius={1} />
+                        </Group>
+                      ))}
+                    </>
+                  ) : amenity.properties?.variant === 'lamp_row' ? (
+                    <>
+                      {/* Path */}
+                      <Line
+                        points={[bbox.minX, bbox.cy + bbox.height*0.2, bbox.maxX, bbox.cy + bbox.height*0.2]}
+                        stroke="#bdbdbd"
+                        strokeWidth={bbox.height * 0.15}
+                        lineCap="round"
+                        listening={activeTool === 'SELECT'}
+                      />
+                      {/* 3 Lamps */}
+                      {[0.2, 0.5, 0.8].map((pos, i) => (
+                        <Group key={`lamp-${i}`} x={bbox.minX + bbox.width * pos} y={bbox.minY} listening={false}>
+                          {/* Pole */}
+                          <Line points={[0, bbox.height*0.7, 0, bbox.height*0.2]} stroke="#757575" strokeWidth={2} />
+                          {/* Light glow */}
+                          <Circle cx={0} cy={bbox.height*0.2} radius={bbox.height*0.4} fill="rgba(253, 224, 71, 0.3)" />
+                          {/* Lamp head */}
+                          <Circle cx={0} cy={bbox.height*0.2} radius={bbox.height*0.15} fill="#ffee58" stroke="#f9a825" strokeWidth={1} />
+                        </Group>
+                      ))}
+                    </>
+                  ) : amenity.properties?.variant === 'hedge_maze' ? (
+                    <>
+                      {/* Base */}
+                      <Rect x={bbox.minX} y={bbox.minY} width={bbox.width} height={bbox.height} fill="#e8f5e9" stroke="#2e7d32" strokeWidth={3} listening={activeTool === 'SELECT'} />
+                      {/* Maze walls */}
+                      <Rect x={bbox.minX + bbox.width*0.15} y={bbox.minY + bbox.height*0.15} width={bbox.width*0.7} height={bbox.height*0.7} fill="none" stroke="#43a047" strokeWidth={2.5} listening={false} />
+                      <Rect x={bbox.minX + bbox.width*0.3} y={bbox.minY + bbox.height*0.3} width={bbox.width*0.4} height={bbox.height*0.4} fill="none" stroke="#66bb6a" strokeWidth={2} listening={false} />
+                      <Rect x={bbox.cx - bbox.width*0.05} y={bbox.cy - bbox.height*0.05} width={bbox.width*0.1} height={bbox.height*0.1} fill="#81c784" listening={false} />
+                      {/* Openings */}
+                      <Line points={[bbox.cx, bbox.minY, bbox.cx, bbox.minY + bbox.height*0.15]} stroke="#e8f5e9" strokeWidth={4} listening={false} />
+                      <Line points={[bbox.cx, bbox.maxY, bbox.cx, bbox.maxY - bbox.height*0.15]} stroke="#e8f5e9" strokeWidth={4} listening={false} />
+                      <Line points={[bbox.minX, bbox.cy, bbox.minX + bbox.width*0.15, bbox.cy]} stroke="#e8f5e9" strokeWidth={4} listening={false} />
+                      <Line points={[bbox.maxX, bbox.cy, bbox.maxX - bbox.width*0.15, bbox.cy]} stroke="#e8f5e9" strokeWidth={4} listening={false} />
+                      <Line points={[bbox.minX + bbox.width*0.15, bbox.cy - bbox.height*0.15, bbox.minX + bbox.width*0.3, bbox.cy - bbox.height*0.15]} stroke="#e8f5e9" strokeWidth={3} listening={false} />
+                    </>
+                  ) : amenity.properties?.variant === 'flower_bed' ? (
+                    <>
+                      {/* Bed */}
+                      <Ellipse x={bbox.cx} y={bbox.cy} radiusX={bbox.width/2} radiusY={bbox.height/2} fill="#4caf50" stroke="#2e7d32" strokeWidth={2} listening={activeTool === 'SELECT'} />
+                      {/* Flowers */}
+                      <Group listening={false}>
+                        <Circle cx={bbox.minX + bbox.width*0.3} cy={bbox.minY + bbox.height*0.3} radius={bbox.width*0.12} fill="#e91e63" />
+                        <Circle cx={bbox.minX + bbox.width*0.7} cy={bbox.minY + bbox.height*0.3} radius={bbox.width*0.1} fill="#ff9800" />
+                        <Circle cx={bbox.minX + bbox.width*0.8} cy={bbox.minY + bbox.height*0.6} radius={bbox.width*0.12} fill="#e91e63" />
+                        <Circle cx={bbox.minX + bbox.width*0.5} cy={bbox.minY + bbox.height*0.7} radius={bbox.width*0.1} fill="#ffeb3b" />
+                        <Circle cx={bbox.minX + bbox.width*0.7} cy={bbox.minY + bbox.height*0.8} radius={bbox.width*0.08} fill="#ff5722" />
+                        <Circle cx={bbox.minX + bbox.width*0.2} cy={bbox.minY + bbox.height*0.6} radius={bbox.width*0.09} fill="#9c27b0" />
+                        <Circle cx={bbox.minX + bbox.width*0.5} cy={bbox.minY + bbox.height*0.4} radius={bbox.width*0.1} fill="#ffeb3b" />
+                      </Group>
+                    </>
+                  ) : amenity.properties?.variant === 'sculpture' ? (
+                    <>
+                      {/* Base pad */}
+                      <Rect x={bbox.minX} y={bbox.minY} width={bbox.width} height={bbox.height} fill="#e2e8f0" stroke="#cbd5e1" strokeWidth={1} cornerRadius={2} listening={activeTool === 'SELECT'} />
+                      {/* Pedestal */}
+                      <Rect x={bbox.minX + bbox.width*0.2} y={bbox.minY + bbox.height*0.2} width={bbox.width*0.6} height={bbox.height*0.6} fill="#b0bec5" stroke="#78909c" strokeWidth={1.5} cornerRadius={1} listening={false} />
+                      {/* Statue shadow */}
+                      <Ellipse x={bbox.cx} y={bbox.cy} radiusX={bbox.width*0.25} radiusY={bbox.height*0.25} fill="rgba(0,0,0,0.15)" listening={false} />
+                      {/* Statue */}
+                      <Circle cx={bbox.cx} cy={bbox.cy} radius={bbox.width*0.25} fill="#90a4ae" stroke="#607d8b" strokeWidth={1.5} listening={false} />
+                      <Circle cx={bbox.cx} cy={bbox.cy} radius={bbox.width*0.1} fill="#b0bec5" listening={false} />
+                    </>
                   ) : (
                     <>
-                      {/* Grand Roundabout */}
+                      {/* Grand Roundabout (fallback for all other or missing variants) */}
                       {/* Outer paved ring */}
                       <Ellipse
                         x={bbox.cx}
@@ -4887,9 +5122,9 @@ out skel qt;`;
                     y={bbox.cy}
                     radiusX={bbox.width / 2}
                     radiusY={bbox.height / 2}
-                    fill={ZONE_COLORS[amenity.type] || '#2ECC71'}
+                    fill={amenity.type === 'tree_cluster' ? 'rgba(0,0,0,0.01)' : (ZONE_COLORS[amenity.type] || '#2ECC71')}
                     opacity={amenity.type === 'park' ? 0.35 : 0.75}
-                    stroke={(isSelected || isClusterSelected) ? "#4f46e5" : "#0f172a"}
+                    stroke={(isSelected || isClusterSelected) ? "#4f46e5" : (amenity.type === 'tree_cluster' ? 'transparent' : "#0f172a")}
                     strokeWidth={(isSelected || isClusterSelected) ? 2 : 1}
                     dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                     visible={!isSpecialPoint}
@@ -4901,9 +5136,9 @@ out skel qt;`;
                     y={bbox.minY}
                     points={pts.map(p => [p[0] - bbox.minX, p[1] - bbox.minY]).flat()}
                     closed={true}
-                    fill={ZONE_COLORS[amenity.type] || '#2ECC71'}
+                    fill={amenity.type === 'tree_cluster' ? 'rgba(0,0,0,0.01)' : (ZONE_COLORS[amenity.type] || '#2ECC71')}
                     opacity={amenity.type === 'park' ? 0.35 : 0.75}
-                    stroke={(isSelected || isClusterSelected) ? "#4f46e5" : "#0f172a"}
+                    stroke={(isSelected || isClusterSelected) ? "#4f46e5" : (amenity.type === 'tree_cluster' ? 'transparent' : "#0f172a")}
                     strokeWidth={(isSelected || isClusterSelected) ? 2 : 1}
                     dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                     visible={!isSpecialPoint}

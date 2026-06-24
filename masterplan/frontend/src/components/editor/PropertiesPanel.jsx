@@ -993,7 +993,13 @@ export default function PropertiesPanel() {
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { value: 'roundabout', label: 'Grand Roundabout', tone: 'from-amber-50 to-orange-100 border-amber-200' },
-                    { value: 'fountain_plaza', label: 'Fountain Plaza', tone: 'from-cyan-50 to-blue-100 border-cyan-200' }
+                    { value: 'fountain_plaza', label: 'Fountain Plaza', tone: 'from-cyan-50 to-blue-100 border-cyan-200' },
+                    { value: 'gazebo', label: 'Gazebo / Pergola', tone: 'from-green-50 to-emerald-100 border-green-200' },
+                    { value: 'bench_row', label: 'Park Bench Row', tone: 'from-stone-50 to-stone-100 border-stone-200' },
+                    { value: 'lamp_row', label: 'Street Lamp Row', tone: 'from-yellow-50 to-amber-100 border-yellow-200' },
+                    { value: 'hedge_maze', label: 'Hedge Maze', tone: 'from-lime-50 to-green-100 border-lime-200' },
+                    { value: 'flower_bed', label: 'Flower Bed', tone: 'from-pink-50 to-rose-100 border-pink-200' },
+                    { value: 'sculpture', label: 'Sculpture / Statue', tone: 'from-slate-50 to-gray-100 border-slate-200' }
                   ].map((preset) => (
                     <div
                       key={preset.value}
@@ -1020,7 +1026,7 @@ export default function PropertiesPanel() {
                             <circle cx="50" cy="50" r="16" fill="#29b6f6" stroke="#0288d1" strokeWidth="3" />
                             <circle cx="50" cy="50" r="6" fill="#ffffff" opacity="0.8" />
                           </svg>
-                        ) : (
+                        ) : preset.value === 'fountain_plaza' ? (
                           <svg viewBox="0 0 100 100" className="w-8 h-8">
                             <rect x="15" y="15" width="70" height="70" fill="none" stroke="#b0bec5" strokeWidth="4" />
                             <circle cx="50" cy="50" r="22" fill="#29b6f6" stroke="#0288d1" strokeWidth="3" />
@@ -1029,6 +1035,63 @@ export default function PropertiesPanel() {
                             <rect x="68" y="22" width="10" height="10" fill="#ffeb3b" />
                             <rect x="22" y="68" width="10" height="10" fill="#ffeb3b" />
                             <rect x="68" y="68" width="10" height="10" fill="#e91e63" />
+                          </svg>
+                        ) : preset.value === 'gazebo' ? (
+                          <svg viewBox="0 0 100 100" className="w-8 h-8">
+                            <polygon points="50,10 85,30 85,70 50,90 15,70 15,30" fill="none" stroke="#8d6e63" strokeWidth="3" />
+                            <line x1="50" y1="10" x2="50" y2="90" stroke="#a1887f" strokeWidth="1.5" />
+                            <line x1="15" y1="30" x2="85" y2="70" stroke="#a1887f" strokeWidth="1.5" />
+                            <line x1="85" y1="30" x2="15" y2="70" stroke="#a1887f" strokeWidth="1.5" />
+                            <circle cx="50" cy="50" r="8" fill="#8d6e63" stroke="#5d4037" strokeWidth="2" />
+                          </svg>
+                        ) : preset.value === 'bench_row' ? (
+                          <svg viewBox="0 0 100 100" className="w-8 h-8">
+                            <rect x="10" y="35" width="18" height="10" fill="#8d6e63" stroke="#5d4037" strokeWidth="1.5" rx="2" />
+                            <rect x="10" y="30" width="18" height="5" fill="#a1887f" rx="1" />
+                            <rect x="40" y="35" width="18" height="10" fill="#8d6e63" stroke="#5d4037" strokeWidth="1.5" rx="2" />
+                            <rect x="40" y="30" width="18" height="5" fill="#a1887f" rx="1" />
+                            <rect x="70" y="35" width="18" height="10" fill="#8d6e63" stroke="#5d4037" strokeWidth="1.5" rx="2" />
+                            <rect x="70" y="30" width="18" height="5" fill="#a1887f" rx="1" />
+                            <line x1="5" y1="55" x2="95" y2="55" stroke="#e2c99f" strokeWidth="3" />
+                          </svg>
+                        ) : preset.value === 'lamp_row' ? (
+                          <svg viewBox="0 0 100 100" className="w-8 h-8">
+                            <line x1="5" y1="70" x2="95" y2="70" stroke="#bdbdbd" strokeWidth="2" />
+                            <line x1="20" y1="70" x2="20" y2="30" stroke="#757575" strokeWidth="2" />
+                            <circle cx="20" cy="26" r="6" fill="#ffee58" stroke="#f9a825" strokeWidth="1.5" />
+                            <line x1="50" y1="70" x2="50" y2="30" stroke="#757575" strokeWidth="2" />
+                            <circle cx="50" cy="26" r="6" fill="#ffee58" stroke="#f9a825" strokeWidth="1.5" />
+                            <line x1="80" y1="70" x2="80" y2="30" stroke="#757575" strokeWidth="2" />
+                            <circle cx="80" cy="26" r="6" fill="#ffee58" stroke="#f9a825" strokeWidth="1.5" />
+                          </svg>
+                        ) : preset.value === 'hedge_maze' ? (
+                          <svg viewBox="0 0 100 100" className="w-8 h-8">
+                            <rect x="10" y="10" width="80" height="80" fill="none" stroke="#2e7d32" strokeWidth="3" />
+                            <rect x="25" y="25" width="50" height="50" fill="none" stroke="#43a047" strokeWidth="2.5" />
+                            <rect x="38" y="38" width="24" height="24" fill="none" stroke="#66bb6a" strokeWidth="2" />
+                            <line x1="10" y1="50" x2="25" y2="50" stroke="#1b5e20" strokeWidth="0" />
+                            <rect x="45" y="45" width="10" height="10" fill="#81c784" />
+                            <line x1="50" y1="10" x2="50" y2="25" stroke="#e8f5e9" strokeWidth="4" />
+                            <line x1="75" y1="50" x2="90" y2="50" stroke="#e8f5e9" strokeWidth="4" />
+                            <line x1="25" y1="50" x2="38" y2="50" stroke="#e8f5e9" strokeWidth="3" />
+                          </svg>
+                        ) : preset.value === 'flower_bed' ? (
+                          <svg viewBox="0 0 100 100" className="w-8 h-8">
+                            <ellipse cx="50" cy="50" rx="40" ry="30" fill="#4caf50" stroke="#2e7d32" strokeWidth="2" />
+                            <circle cx="35" cy="40" r="6" fill="#e91e63" />
+                            <circle cx="55" cy="35" r="5" fill="#ff9800" />
+                            <circle cx="65" cy="50" r="6" fill="#e91e63" />
+                            <circle cx="40" cy="55" r="5" fill="#ffeb3b" />
+                            <circle cx="55" cy="58" r="4" fill="#ff5722" />
+                            <circle cx="30" cy="50" r="4" fill="#9c27b0" />
+                            <circle cx="50" cy="45" r="5" fill="#ffeb3b" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 100 100" className="w-8 h-8">
+                            <rect x="35" y="55" width="30" height="35" fill="#b0bec5" stroke="#78909c" strokeWidth="2" rx="2" />
+                            <circle cx="50" cy="40" r="18" fill="#90a4ae" stroke="#607d8b" strokeWidth="2" />
+                            <circle cx="50" cy="40" r="8" fill="#b0bec5" />
+                            <rect x="45" y="88" width="10" height="4" fill="#78909c" />
                           </svg>
                         )}
                         <span className="absolute text-[8px] text-slate-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-1 rounded">Drag / Click</span>
