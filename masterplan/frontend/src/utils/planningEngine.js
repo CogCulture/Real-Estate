@@ -185,26 +185,62 @@ Distribute them around the central amenity zone at these approximate positions:
     }
   }
 
+  const MARGIN = 0.06;
+
   const enforceBounds = (item) => {
-    if (!boundsPolyPct || item.shape === 'ellipse') return true;
-    const pt = turf.point([item.x_pct || item.cx_pct || 0.5, item.y_pct || item.cy_pct || 0.5]);
-    if (!turf.booleanPointInPolygon(pt, boundsPolyPct)) {
-      // Snap to nearest point on the polygon line
-      const nearest = turf.nearestPointOnLine(turf.polygonToLine(boundsPolyPct), pt);
-      if (nearest && nearest.geometry && nearest.geometry.coordinates) {
-        if (item.x_pct !== undefined) item.x_pct = nearest.geometry.coordinates[0];
-        if (item.cx_pct !== undefined) item.cx_pct = nearest.geometry.coordinates[0];
-        if (item.y_pct !== undefined) item.y_pct = nearest.geometry.coordinates[1];
-        if (item.cy_pct !== undefined) item.cy_pct = nearest.geometry.coordinates[1];
-        // Move inwards slightly
-        if (item.x_pct) item.x_pct += (0.5 - item.x_pct) * 0.05;
-        if (item.cx_pct) item.cx_pct += (0.5 - item.cx_pct) * 0.05;
-        if (item.y_pct) item.y_pct += (0.5 - item.y_pct) * 0.05;
-        if (item.cy_pct) item.cy_pct += (0.5 - item.cy_pct) * 0.05;
+    // Step 1: clamp position so top-left corner is within [MARGIN, 1-MARGIN]
+    if (item.x_pct !== undefined) {
+      item.x_pct = Math.max(MARGIN, item.x_pct);
+    }
+    if (item.cx_pct !== undefined) {
+      item.cx_pct = Math.max(MARGIN, item.cx_pct);
+    }
+    if (item.y_pct !== undefined) {
+      item.y_pct = Math.max(MARGIN, item.y_pct);
+    }
+    if (item.cy_pct !== undefined) {
+      item.cy_pct = Math.max(MARGIN, item.cy_pct);
+    }
+
+    // Step 2: clamp so trailing edge (x + width, y + height) also stays within [MARGIN, 1-MARGIN]
+    const maxPos = 1 - MARGIN;
+
+    if (item.x_pct !== undefined && item.width_pct !== undefined) {
+      if (item.x_pct + item.width_pct > maxPos) {
+        item.x_pct = maxPos - item.width_pct;
+        // If the element is wider than the allowed zone, shrink it
+        if (item.x_pct < MARGIN) {
+          item.x_pct = MARGIN;
+          item.width_pct = maxPos - MARGIN;
+        }
       }
     }
+    if (item.y_pct !== undefined && item.height_pct !== undefined) {
+      if (item.y_pct + item.height_pct > maxPos) {
+        item.y_pct = maxPos - item.height_pct;
+        if (item.y_pct < MARGIN) {
+          item.y_pct = MARGIN;
+          item.height_pct = maxPos - MARGIN;
+        }
+      }
+    }
+
+    // Step 3: for ellipse shapes, clamp cx/cy so radius fits inside
+    if (item.cx_pct !== undefined && item.rx_pct !== undefined) {
+      item.cx_pct = Math.max(MARGIN + item.rx_pct, Math.min(maxPos - item.rx_pct, item.cx_pct));
+    }
+    if (item.cy_pct !== undefined && item.ry_pct !== undefined) {
+      item.cy_pct = Math.max(MARGIN + item.ry_pct, Math.min(maxPos - item.ry_pct, item.cy_pct));
+    }
+
     return true;
   };
+
+  // Clamp a single road/path point to within [MARGIN, 1-MARGIN] in pct space
+  const clampPointPct = (xPct, yPct) => [
+    Math.max(MARGIN, Math.min(1 - MARGIN, xPct)),
+    Math.max(MARGIN, Math.min(1 - MARGIN, yPct))
+  ];
 
   // 1. Process Towers (zones)
   if (aiLayout.towers) {
@@ -279,12 +315,14 @@ Distribute them around the central amenity zone at these approximate positions:
   // 3. Process Roads & Paths
   if (aiLayout.roads) {
     aiLayout.roads.forEach(r => {
+      // Clamp every road point within site boundary before converting
+      const clampedPoints = r.points.map(p => clampPointPct(p[0], p[1]));
       roads.push({
         id: r.id,
         type: "primary",
         label: r.id.replace('_', ' '),
-        points_px: r.points.map(p => [p[0] * canvasWidth, p[1] * canvasHeight]),
-        points_m: r.points.map(p => [p[0] * siteWidthM, p[1] * siteHeightM]),
+        points_px: clampedPoints.map(p => [p[0] * canvasWidth, p[1] * canvasHeight]),
+        points_m: clampedPoints.map(p => [p[0] * siteWidthM, p[1] * siteHeightM]),
         width_px: r.width_meters * scale,
         width_m: r.width_meters,
         color: "#64748B",
@@ -297,12 +335,14 @@ Distribute them around the central amenity zone at these approximate positions:
   
   if (aiLayout.pedestrian_paths) {
     aiLayout.pedestrian_paths.forEach(p => {
+      // Clamp every pedestrian path point within site boundary
+      const clampedPoints = p.points.map(pt => clampPointPct(pt[0], pt[1]));
       roads.push({
         id: p.id,
         type: "pedestrian",
         label: p.id.replace('_', ' '),
-        points_px: p.points.map(pt => [pt[0] * canvasWidth, pt[1] * canvasHeight]),
-        points_m: p.points.map(pt => [pt[0] * siteWidthM, pt[1] * siteHeightM]),
+        points_px: clampedPoints.map(pt => [pt[0] * canvasWidth, pt[1] * canvasHeight]),
+        points_m: clampedPoints.map(pt => [pt[0] * siteWidthM, pt[1] * siteHeightM]),
         width_px: (p.width_meters || 2) * scale,
         width_m: p.width_meters || 2,
         color: "#95A5A6",
@@ -312,7 +352,46 @@ Distribute them around the central amenity zone at these approximate positions:
       });
     });
   }
-  
+
+  // Connect entry points to nearest road endpoint
+  // For each entry, snap the closest road start/end point to the entry position
+  if (aiLayout.entry_points && roads.length > 0) {
+    aiLayout.entry_points.forEach(entry => {
+      const ex = entry.x_pct * canvasWidth;
+      const ey = entry.y_pct * canvasHeight;
+
+      let bestRoad = null;
+      let bestEndIdx = null; // 0 = first point, -1 = last point
+      let bestDist = Infinity;
+
+      roads.forEach(road => {
+        if (!road.points_px || road.points_px.length < 2) return;
+        // Check first point
+        const fp = road.points_px[0];
+        const distFirst = Math.sqrt((fp[0] - ex) ** 2 + (fp[1] - ey) ** 2);
+        if (distFirst < bestDist) {
+          bestDist = distFirst;
+          bestRoad = road;
+          bestEndIdx = 0;
+        }
+        // Check last point
+        const lp = road.points_px[road.points_px.length - 1];
+        const distLast = Math.sqrt((lp[0] - ex) ** 2 + (lp[1] - ey) ** 2);
+        if (distLast < bestDist) {
+          bestDist = distLast;
+          bestRoad = road;
+          bestEndIdx = road.points_px.length - 1;
+        }
+      });
+
+      // Snap the nearest road endpoint to the entry gate position
+      if (bestRoad && bestDist < canvasWidth * 0.5) {
+        bestRoad.points_px[bestEndIdx] = [ex, ey];
+        bestRoad.points_m[bestEndIdx] = [entry.x_pct * siteWidthM, entry.y_pct * siteHeightM];
+      }
+    });
+  }
+
   // Add tree clusters to amenities/landscape
   if (aiLayout.landscape && aiLayout.landscape.tree_clusters) {
     aiLayout.landscape.tree_clusters.forEach(tc => {

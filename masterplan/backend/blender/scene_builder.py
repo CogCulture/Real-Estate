@@ -37,25 +37,25 @@ def build_zone(zone):
     floor_height = zone.get("properties", {}).get("floor_height_m", 3.0)
     total_height = floors * floor_height
 
+    cx = x + w / 2
+    cy = y + h / 2
+    rotation = zone.get("rotation_deg", 0)
+    angle_rad = -math.radians(rotation)
+
     # Determine building footprint (apply setbacks)
     setback_front = zone.get("properties", {}).get("setback_front_m", 2)
     setback_side = zone.get("properties", {}).get("setback_side_m", 1.5)
     build_w = w - (setback_side * 2)
     build_h = h - (setback_front * 2)
-    build_x = x + setback_side
-    build_y = y + setback_front
 
     if zone_type in ["residential", "commercial", "mixed_use", "institutional"]:
         # Create building mesh
-        bpy.ops.mesh.primitive_cube_add(size=1, location=(
-            build_x + build_w / 2,
-            build_y + build_h / 2,
-            total_height / 2
-        ))
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(cx, cy, total_height / 2))
         obj = bpy.context.active_object
         obj.name = f"Zone_{zone['id']}"
         obj.scale = (build_w, build_h, total_height)
         bpy.ops.object.transform_apply(scale=True)
+        obj.rotation_euler[2] = angle_rad
 
         # Apply material based on zone type
         mat = get_material(zone_type)
@@ -63,52 +63,55 @@ def build_zone(zone):
 
         # Add roof detail for residential
         if zone_type == "residential" and floors <= 3:
-            add_roof(obj, build_w, build_h, build_x, build_y, total_height)
+            add_roof(obj, build_w, build_h, cx, cy, total_height, angle_rad)
 
         # Ground patch (plot boundary)
-        bpy.ops.mesh.primitive_plane_add(size=1, location=(x + w/2, y + h/2, 0.01))
+        bpy.ops.mesh.primitive_plane_add(size=1, location=(cx, cy, 0.01))
         ground_patch = bpy.context.active_object
         ground_patch.name = f"Plot_{zone['id']}"
         ground_patch.scale = (w, h, 1)
         bpy.ops.object.transform_apply(scale=True)
+        ground_patch.rotation_euler[2] = angle_rad
         ground_patch.data.materials.append(get_material("plot_ground"))
 
     elif zone_type in ["green_belt", "park"]:
-        # Flat green area with slight elevation (0.1m)
-        bpy.ops.mesh.primitive_plane_add(size=1, location=(x + w/2, y + h/2, 0.05))
+        # Flat green area with slight elevation (0.05m)
+        bpy.ops.mesh.primitive_plane_add(size=1, location=(cx, cy, 0.05))
         obj = bpy.context.active_object
         obj.name = f"Green_{zone['id']}"
         obj.scale = (w, h, 1)
         bpy.ops.object.transform_apply(scale=True)
+        obj.rotation_euler[2] = angle_rad
         obj.data.materials.append(get_material("grass_rich"))
 
     elif zone_type == "water_body":
         # Flat blue area, slightly below ground
-        bpy.ops.mesh.primitive_plane_add(size=1, location=(x + w/2, y + h/2, -0.05))
+        bpy.ops.mesh.primitive_plane_add(size=1, location=(cx, cy, -0.05))
         obj = bpy.context.active_object
         obj.name = f"Water_{zone['id']}"
         obj.scale = (w, h, 1)
         bpy.ops.object.transform_apply(scale=True)
+        obj.rotation_euler[2] = angle_rad
         obj.data.materials.append(get_material("water"))
 
     elif zone_type == "parking":
         # Flat gray surface
-        bpy.ops.mesh.primitive_plane_add(size=1, location=(x + w/2, y + h/2, 0.02))
+        bpy.ops.mesh.primitive_plane_add(size=1, location=(cx, cy, 0.02))
         obj = bpy.context.active_object
         obj.name = f"Parking_{zone['id']}"
         obj.scale = (w, h, 1)
         bpy.ops.object.transform_apply(scale=True)
-        obj.data.materials.append(get_material("asphalt"))
+        obj.rotation_euler[2] = angle_rad
+        obj.data.materials.append(get_material("parking"))
 
-def add_roof(building_obj, w, h, x, y, height):
+def add_roof(building_obj, w, h, cx, cy, height, angle_rad):
     """Add a simple sloped roof on low-rise buildings"""
-    # Create pyramid roof
     verts = [
-        (x, y, height),
-        (x + w, y, height),
-        (x + w, y + h, height),
-        (x, y + h, height),
-        (x + w/2, y + h/2, height + 2.5),  # Ridge point
+        (-w/2, -h/2, height),
+        (w/2, -h/2, height),
+        (w/2, h/2, height),
+        (-w/2, h/2, height),
+        (0, 0, height + 2.5),
     ]
     faces = [(0,1,4), (1,2,4), (2,3,4), (3,0,4), (0,1,2,3)]
     mesh = bpy.data.meshes.new("Roof")
@@ -116,6 +119,8 @@ def add_roof(building_obj, w, h, x, y, height):
     bpy.context.collection.objects.link(obj)
     mesh.from_pydata(verts, [], faces)
     obj.data.materials.append(get_material("roof_tile"))
+    obj.rotation_euler[2] = angle_rad
+    obj.location = (cx, cy, 0)
 
 def build_road(road):
     """Build road from waypoints"""

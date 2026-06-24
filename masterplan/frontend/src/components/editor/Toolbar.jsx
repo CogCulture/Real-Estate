@@ -9,7 +9,8 @@ import {
   Sparkles,
   Undo2,
   Redo2,
-  Trash2
+  Trash2,
+  BoxSelect
 } from 'lucide-react';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useParams } from 'react-router-dom';
@@ -26,8 +27,12 @@ export default function Toolbar({ viewMode, setViewMode }) {
     redo,
     setLayout,
     resetLayout,
+    setSelectedElementId,
     meta,
-    setMeta
+    setMeta,
+    selectedCluster,
+    duplicateClusterElements,
+    clearSelectedCluster
   } = useLayoutStore();
 
   const [isGenerating, setIsGenerating] = React.useState(false);
@@ -50,10 +55,7 @@ export default function Toolbar({ viewMode, setViewMode }) {
   };
 
   const tools = [
-    { id: 'SELECT', label: 'Select (S)', icon: Pointer, shortcut: 's' },
-    { id: 'SQUARE', label: 'Square (Q)', icon: Square, shortcut: 'q' },
-    { id: 'LINE', label: 'Line (L)', icon: Milestone, shortcut: 'l' },
-    { id: 'CONNECTOR', label: 'Connector (C)', icon: Milestone, shortcut: 'c' },
+    { id: 'CLUSTER_SELECT', label: 'Select Area (C)', icon: BoxSelect, shortcut: 'c' },
     { id: 'LABEL', label: 'Label (T)', icon: MapPin, shortcut: 't' },
     { id: 'ERASER', label: 'Eraser (E)', icon: Eraser, shortcut: 'e' }
   ];
@@ -85,6 +87,9 @@ export default function Toolbar({ viewMode, setViewMode }) {
       const toolMatch = tools.find(t => t.shortcut === key);
       if (toolMatch) {
         setActiveTool(toolMatch.id);
+        if (toolMatch.id !== 'SELECT') {
+          setSelectedElementId(null);
+        }
       }
 
       // Custom toggles
@@ -102,7 +107,7 @@ export default function Toolbar({ viewMode, setViewMode }) {
   }, [gridSnapped, undo, redo]);
 
   return (
-    <div className="flex flex-col gap-4 bg-white border border-slate-200 p-4 rounded-lg shadow-sm w-[220px]">
+    <div className="flex flex-col gap-4 w-full">
       <h3 className="text-xs font-semibold text-slate-500 tracking-wider">DESIGN TOOLS</h3>
       
       <div className="flex flex-col gap-1.5">
@@ -112,7 +117,13 @@ export default function Toolbar({ viewMode, setViewMode }) {
           return (
             <button
               key={tool.id}
-              onClick={() => setActiveTool(isActive ? 'SELECT' : tool.id)}
+              onClick={() => {
+                const nextTool = isActive ? 'SELECT' : tool.id;
+                setActiveTool(nextTool);
+                if (nextTool !== 'SELECT') {
+                  setSelectedElementId(null);
+                }
+              }}
               className={`flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-md transition-all duration-300 text-left ${
                 isActive 
                   ? 'bg-indigo-600 text-white shadow-md' 
@@ -132,34 +143,53 @@ export default function Toolbar({ viewMode, setViewMode }) {
         })}
       </div>
 
-      <hr className="border-slate-100" />
-
-      {/* View Mode */}
-      <div className="flex flex-col gap-1.5">
-        <h3 className="text-xs font-semibold text-slate-500 tracking-wider">VIEW MODE</h3>
-        {[
-          { id: 'grass',     label: 'Grass (Unreal)',     color: '#4a8c3f' },
-          { id: 'concrete',  label: 'Concrete (Unreal)',  color: '#9ca3af' },
-          { id: 'satellite', label: 'Satellite',          color: '#1a2332' },
-          { id: 'street',    label: 'Street Map',         color: '#3b82f6' },
-        ].map(mode => (
-          <button
-            key={mode.id}
-            onClick={() => setViewMode && setViewMode(mode.id)}
-            className={`flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${
-              viewMode === mode.id
-                ? 'ring-2 ring-indigo-400 bg-slate-100 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span
-              className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0"
-              style={{ background: mode.color }}
-            />
-            {mode.label}
-          </button>
-        ))}
-      </div>
+      {selectedCluster && (
+        <div className="p-3 border border-indigo-200 bg-indigo-50/50 rounded-lg my-2">
+          <div className="text-[10px] font-bold text-indigo-800 uppercase tracking-wider mb-2">Clustered Group</div>
+          <div className="text-[11px] text-slate-600 mb-3 space-y-1">
+            {selectedCluster.zoneIds?.length > 0 && (
+              <div className="flex justify-between">
+                <span>Zones</span>
+                <span className="font-semibold bg-slate-100 px-1.5 py-0.2 rounded text-indigo-700">{selectedCluster.zoneIds.length}</span>
+              </div>
+            )}
+            {selectedCluster.roadIds?.length > 0 && (
+              <div className="flex justify-between">
+                <span>Roads</span>
+                <span className="font-semibold bg-slate-100 px-1.5 py-0.2 rounded text-indigo-700">{selectedCluster.roadIds.length}</span>
+              </div>
+            )}
+            {selectedCluster.amenityIds?.length > 0 && (
+              <div className="flex justify-between">
+                <span>Amenities</span>
+                <span className="font-semibold bg-slate-100 px-1.5 py-0.2 rounded text-indigo-700">{selectedCluster.amenityIds.length}</span>
+              </div>
+            )}
+            {selectedCluster.labelIds?.length > 0 && (
+              <div className="flex justify-between">
+                <span>Labels</span>
+                <span className="font-semibold bg-slate-100 px-1.5 py-0.2 rounded text-indigo-700">{selectedCluster.labelIds.length}</span>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => duplicateClusterElements(selectedCluster)}
+              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-2 rounded-md transition-all shadow-sm"
+              title="Duplicate clustered selection"
+            >
+              Duplicate
+            </button>
+            <button
+              onClick={clearSelectedCluster}
+              className="flex-1 bg-slate-200 hover:bg-slate-355 text-slate-700 text-xs font-semibold py-1.5 px-2 rounded-md transition-all border border-slate-300"
+              title="Deselect all"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       <hr className="border-slate-100" />
 
@@ -177,6 +207,14 @@ export default function Toolbar({ viewMode, setViewMode }) {
         >
           <Milestone size={14} />
           <span>Connected Roads</span>
+        </button>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('clearMapConnections'))}
+          className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 hover:shadow-sm"
+          title="Clear all connected public road guides from the map"
+        >
+          <Trash2 size={14} />
+          <span>Clear Map Connections</span>
         </button>
         {meta.deleted_osm_road_ids && meta.deleted_osm_road_ids.length > 0 && (
           <button

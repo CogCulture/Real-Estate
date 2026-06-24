@@ -1,0 +1,569 @@
+{
+  "version": "1.0",
+  "project_id": "3bc805a1-cb42-4ace-8114-62d5a67c960a",
+  "meta": {
+    "site_width_m": 212.06,
+    "site_height_m": 236.14,
+    "canvas_width_px": 960,
+    "canvas_height_px": 1069,
+    "scale_px_per_m": 4.527,
+    "north_angle_deg": 0,
+    "total_area_sqm": 50075.848399999995
+  },
+  "zones": [],
+  "roads": [
+    {
+      "id": "road_1782217403940",
+      "type": "tertiary",
+      "label": "Outer Ring Road 1",
+      "points_px": [
+        [
+          421.011,
+          579.456
+        ],
+        [
+          416.48400000000004,
+          593.037
+        ],
+        [
+          411.957,
+          606.618
+        ],
+        [
+          402.903,
+          611.145
+        ],
+        [
+          393.849,
+          615.672
+        ],
+        [
+          375.741,
+          611.145
+        ],
+        [
+          366.687,
+          606.618
+        ],
+        [
+          362.16,
+          597.564
+        ],
+        [
+          357.63300000000004,
+          588.51
+        ],
+        [
+          362.16,
+          570.402
+        ],
+        [
+          366.687,
+          561.3480000000001
+        ],
+        [
+          375.741,
+          556.821
+        ],
+        [
+          384.795,
+          552.294
+        ],
+        [
+          402.903,
+          556.821
+        ],
+        [
+          411.957,
+          561.3480000000001
+        ],
+        [
+          416.48400000000004,
+          565.875
+        ],
+        [
+          421.011,
+          579.456
+        ]
+      ],
+      "points_m": [
+        [
+          93,
+          128
+        ],
+        [
+          92,
+          131
+        ],
+        [
+          91,
+          134
+        ],
+        [
+          89,
+          135
+        ],
+        [
+          87,
+          136
+        ],
+        [
+          83,
+          135
+        ],
+        [
+          81,
+          134
+        ],
+        [
+          80,
+          132
+        ],
+        [
+          79,
+          130
+        ],
+        [
+          80,
+          126
+        ],
+        [
+          81,
+          124
+        ],
+        [
+          83,
+          123
+        ],
+        [
+          85,
+          122
+        ],
+        [
+          89,
+          123
+        ],
+        [
+          91,
+          124
+        ],
+        [
+          92,
+          125
+        ],
+        [
+          93,
+          128
+        ]
+      ],
+      "width_px": 13.581,
+      "width_m": 3,
+      "color": "#95A5A6",
+      "has_median": false,
+      "median_width_m": 2
+    },
+    {
+      "id": "road_1782217563796",
+      "type": "ring_secondary",
+      "label": "Boundary Road",
+      "points_px": [
+        [
+          71.57522939393162,
+          329.22758346481226
+        ],
+        [
+          413.12693136771935,
+          995.4957429196963
+        ],
+        [
+          884.4405296036139,
+          750.0833462710825
+        ],
+        [
+          493.89606077980375,
+          75.12247708364104
+        ],
+        [
+          71.57522939393162,
+          329.22758346481226
+        ]
+      ],
+      "points_m": [
+        [
+          15.810742079507758,
+          72.72533321511204
+        ],
+        [
+          91.25843414352094,
+          219.90186501429122
+        ],
+        [
+          195.37011919673378,
+          165.69104180938425
+        ],
+        [
+          109.100079695119,
+          16.594317889030492
+        ],
+        [
+          15.810742079507758,
+          72.72533321511204
+        ]
+      ],
+      "width_m": 4,
+      "color": "#6366f1",
+      "has_median": false,
+      "median_width_m": 0
+    },
+    {
+      "id": "road_1782217563802_path",
+      "type": "pedestrian",
+      "label": "Jogging Path",
+      "points_px": [
+        [
+          95.43362701112432,
+          336.02906662700815
+        ],
+        [
+          420.9363337525955,
+          970.9906575773894
+        ],
+        [
+          859.2574768454458,
+          742.7573680736499
+        ],
+        [
+          487.4408294761027,
+          100.16330434178184
+        ],
+        [
+          95.43362701112432,
+          336.02906662700815
+        ]
+      ],
+      "points_m": [
+        [
+          21.080986748646854,
+          74.22775936094723
+        ],
+        [
+          92.98350646180593,
+          214.4887690694476
+        ],
+        [
+          189.80726239130678,
+          164.07275636705322
+        ],
+        [
+          107.67413949107636,
+          22.12575753076692
+        ],
+        [
+          21.080986748646854,
+          74.22775936094723
+        ]
+      ],
+      "width_m": 2,
+      "color": "#D5D8DC",
+      "has_median": false,
+      "median_width_m": 0
+    },
+    {
+      "id": "road_1782218534879",
+      "type": "primary",
+      "label": "Primary Boulevard 4",
+      "points_px": [
+        [
+          344.68831687290094,
+          556.2116423288994
+        ],
+        [
+          706.8483168729009,
+          429.4556423288994
+        ]
+      ],
+      "points_m": [
+        [
+          76.14,
+          122.87
+        ],
+        [
+          156.14,
+          94.87
+        ]
+      ],
+      "width_px": 27.162,
+      "width_m": 6,
+      "color": "#5D6D7E",
+      "has_median": true,
+      "median_width_m": 2
+    }
+  ],
+  "amenities": [
+    {
+      "id": "tree_1782217563797_0",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_1",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_2",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_3",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_4",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_5",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_6",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_7",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_8",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_9",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_10",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_11",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_12",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_13",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_14",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_15",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_16",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_17",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_18",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_19",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_20",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_21",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_22",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_23",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_24",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_25",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_26",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_27",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_28",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_29",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_30",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_31",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_32",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_33",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_34",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_35",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_36",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_37",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_38",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_39",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_40",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_41",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_42",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    },
+    {
+      "id": "tree_1782217563797_43",
+      "type": "tree_cluster",
+      "width_m": 6,
+      "height_m": 6
+    }
+  ],
+  "labels": []
+}

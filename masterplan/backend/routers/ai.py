@@ -35,7 +35,8 @@ DIMENSIONAL REALITY CHECK:
 OUTPUT RULES:
 - Return ONLY a valid JSON object
 - All coordinates are percentages of canvas (0.0 to 1.0)
-- No coordinate below 0.06 or above 0.94
+- CRITICAL BOUNDARY RULE: The site is an irregular polygon. Do NOT place any towers, roads, or amenities near the bounding box edges (below 0.15 or above 0.85) to prevent them from spilling outside the actual site. Keep EVERYTHING tightly clustered towards the center.
+- Roads MUST form closed loops or straight lines purely inside the 0.15 to 0.85 range. Do NOT draw roads to the corners.
 - Minimum 6 towers, maximum 8 towers
 - Roads use bezier tension curves (tension 0.3-0.5)
 - Every element must have a unique position with NO overlaps
@@ -59,12 +60,13 @@ REQUIRED JSON STRUCTURE:
 
 PLACEMENT STRATEGY:
 1. Place entry points first: main entry at south (y=0.94), secondary at north (y=0.06)
-2. Place main boulevard connecting entries through center
-3. Place inner loop road around the central amenity zone
+2. Place main boulevard STARTING at main entry exact coords [x_pct, 0.94] and ENDING at secondary entry exact coords [x_pct, 0.06]. The boulevard MUST touch both entry points — roads connect to gates.
+3. Place inner loop road around the central amenity zone — NO road point may be outside 0.06-0.94
 4. Place 8 towers AROUND the loop road, evenly distributed, each with {tower_w_pct:.3f} x {tower_h_pct:.3f} size
-5. Place clubhouse and amenities INSIDE the loop road
-6. Place tree clusters in gaps between towers and along boundaries
-7. VERIFY: no tower overlaps another tower, no tower overlaps a road, nothing goes outside 0.06-0.94
+5. Place clubhouse and amenities INSIDE the loop road. Amenity centers must be at least 0.06 away from any road centerline point to avoid overlap.
+6. Pedestrian paths must follow the inner perimeter of the loop road as a logical jogging track — do NOT drop pedestrian paths randomly inside towers or roads.
+7. Place tree clusters in gaps between towers and along boundaries
+8. VERIFY: no tower overlaps another tower, no tower overlaps a road, nothing goes outside 0.06-0.94
 
 Tower approximate positions (distribute evenly):
 - Tower A: (0.15, 0.18), Tower B: (0.42, 0.12)

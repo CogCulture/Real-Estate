@@ -7,28 +7,49 @@ export function createGrassTexture() {
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
   
-  // Base grass color
-  ctx.fillStyle = '#3f7a24';
+  // Base soft grass/moss green color
+  ctx.fillStyle = '#7bb258';
   ctx.fillRect(0, 0, 256, 256);
   
-  // Add noise and organic details
-  const colors = ['#498c2d', '#579e37', '#346b1c', '#60a340', '#3b7421'];
-  for (let i = 0; i < 40000; i++) {
+  // Add soft organic lighting/texture noise
+  const colors = ['#83ba5f', '#77ae53', '#89c167', '#70a74c', '#7ebd5a'];
+  for (let i = 0; i < 30000; i++) {
     const x = Math.random() * 256;
     const y = Math.random() * 256;
-    const w = 1 + Math.random() * 2;
-    const h = 1 + Math.random() * 4; // slight vertical stretch for grass blades
-    
+    const size = 1 + Math.random() * 2.5;
     ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-    ctx.fillRect(x, y, w, h);
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fill();
   }
   
-  // Add some soft lighting variations
-  const grad = ctx.createRadialGradient(128, 128, 10, 128, 128, 150);
-  grad.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
-  grad.addColorStop(1, 'rgba(0, 0, 0, 0.05)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 256, 256);
+  // Overlay some noise texture to make it look organic
+  for (let i = 0; i < 5000; i++) {
+    const x = Math.random() * 256;
+    const y = Math.random() * 256;
+    const size = 0.5 + Math.random() * 1;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.fillRect(x, y, size, size);
+  }
+  for (let i = 0; i < 5000; i++) {
+    const x = Math.random() * 256;
+    const y = Math.random() * 256;
+    const size = 0.5 + Math.random() * 1;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.fillRect(x, y, size, size);
+  }
+
+  // Draw soft diagonal light streaks for a mowed lawn / premium landscape effect
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
+  ctx.lineWidth = 16;
+  for (let i = -256; i < 512; i += 32) {
+    ctx.beginPath();
+    ctx.moveTo(i, -50);
+    ctx.lineTo(i + 350, 350);
+    ctx.stroke();
+  }
+  ctx.restore();
 
   const img = new Image();
   img.src = canvas.toDataURL();
@@ -411,6 +432,92 @@ function processImageTransparency(img) {
   });
 }
 
+export function createStoneTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  
+  // Base grout/soil color (dark warm desert brown/clay)
+  ctx.fillStyle = '#6e543c';
+  ctx.fillRect(0, 0, 128, 128);
+  
+  // Draw larger marble-like paving slabs (4x2 grid with offsets)
+  const rows = 4;
+  const cols = 2;
+  const stoneW = 128 / cols;
+  const stoneH = 128 / rows;
+  
+  for (let r = 0; r < rows; r++) {
+    const offset = (r % 2) * (stoneW / 2);
+    for (let c = -1; c <= cols; c++) {
+      const x = c * stoneW + offset;
+      const y = r * stoneH;
+      
+      const w = stoneW - 2.5;
+      const h = stoneH - 2.5;
+      
+      // Warm desert sand/marble colors
+      const desertMarbleTones = [
+        '#ebdcb9', // Sand cream
+        '#e2c99f', // Light ochre
+        '#f5eedc', // Pale marble cream
+        '#dca875', // Desert sand
+        '#d5bda5', // Dusty sand
+        '#e7d3be'  // Soft peach/cream
+      ];
+      
+      const idx = Math.abs(Math.sin(r * 17.23 + c * 43.19)) * 10000 % desertMarbleTones.length;
+      const baseColor = desertMarbleTones[Math.floor(idx)];
+      ctx.fillStyle = baseColor;
+      
+      // Draw smooth rectangular slab
+      ctx.fillRect(x + 1.25, y + 1.25, w, h);
+      
+      // Draw subtle organic marble veining inside each slab
+      ctx.save();
+      // Clip to slab to prevent veins bleeding into grout
+      ctx.beginPath();
+      ctx.rect(x + 1.25, y + 1.25, w, h);
+      ctx.clip();
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)'; // light veins
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(x + 2 + Math.random() * (w - 4), y + 2);
+      ctx.lineTo(x + 2 + Math.random() * (w - 4), y + h - 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(110, 84, 60, 0.2)'; // dark veins
+      ctx.beginPath();
+      ctx.moveTo(x + 2, y + 2 + Math.random() * (h - 4));
+      ctx.lineTo(x + w - 2, y + 2 + Math.random() * (h - 4));
+      ctx.stroke();
+      
+      ctx.restore();
+
+      // Shading gradient for polished marble look
+      const grad = ctx.createLinearGradient(x, y, x + w, y + h);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+      grad.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0.08)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(x + 1.25, y + 1.25, w, h);
+    }
+  }
+
+  // Smooth surface shine / gloss overlay
+  const shineGrad = ctx.createLinearGradient(0, 0, 128, 128);
+  shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0.04)');
+  shineGrad.addColorStop(1, 'rgba(0, 0, 0, 0.04)');
+  ctx.fillStyle = shineGrad;
+  ctx.fillRect(0, 0, 128, 128);
+
+  const img = new Image();
+  img.src = canvas.toDataURL();
+  return img;
+}
+
 export async function loadGeneratedAssets() {
   const [
     roadTopdown,
@@ -465,6 +572,7 @@ export async function loadGeneratedAssets() {
     grassTile: createGrassTexture(),
     asphaltTile: createAsphaltTexture(),
     concreteTile: createConcreteTexture(),
+    stoneTile: createStoneTexture(),
     roadTopdown: roadTopdown || createAsphaltTexture(),
     buildingResidential: buildingResidential || createWarmBuildingTexture(),
     buildingCommercial: buildingCommercial || createGlassBuildingTexture(),

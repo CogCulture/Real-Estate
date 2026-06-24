@@ -29,6 +29,7 @@ export function exportLayoutToJSON(projectId, zones, roads, amenities, labels, m
       color: z.color,
       opacity: z.opacity || 0.8,
       rotation_deg: z.rotation_deg || 0,
+      footprint: z.footprint || 'rectangular',
       properties: z.properties || {}
     })),
     roads: roads.map(r => ({

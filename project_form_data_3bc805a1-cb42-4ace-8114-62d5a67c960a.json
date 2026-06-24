@@ -1,0 +1,100 @@
+{
+  "id": "3bc805a1-cb42-4ace-8114-62d5a67c960a",
+  "name": "My Site Plan",
+  "description": "Created via OSM Map",
+  "location_name": "Map Boundary",
+  "lat": 28.459904973666116,
+  "lng": 77.0278431639317,
+  "site_width": 212.06,
+  "site_height": 236.14,
+  "site_area": 26375.03,
+  "boundary_geojson": {
+    "type": "Feature",
+    "properties": {},
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            77.0278431639317,
+            28.459904973666116
+          ],
+          [
+            77.0287227536013,
+            28.45839650182436
+          ],
+          [
+            77.03000995799576,
+            28.458985751199606
+          ],
+          [
+            77.02900164788676,
+            28.46051778420277
+          ],
+          [
+            77.0278431639317,
+            28.459904973666116
+          ]
+        ]
+      ]
+    }
+  },
+  "created_at": "2026-06-23 12:18:23",
+  "updated_at": "2026-06-23 12:18:23",
+  "features": {
+    "project_specification": [
+      "Township"
+    ],
+    "unit_specifications": [],
+    "clubhouse": {
+      "Sports & Fitness": [
+        "CrossFit Zone"
+      ],
+      "Aquatic Facilities": [
+        "Infinity Pool"
+      ],
+      "Wellness & Spa": [
+        "Massage Rooms"
+      ],
+      "Entertainment & Recreation": [
+        "Party Hall"
+      ],
+      "Family & Kids": [
+        "Creche / Daycare"
+      ],
+      "Business & Work": [
+        "Business Centre"
+      ],
+      "Food & Social": [
+        "Community Kitchen"
+      ],
+      "Outdoor Leisure": [
+        "Event Lawn"
+      ],
+      "Senior Citizen Amenities": [
+        "Chess Room"
+      ],
+      "Luxury & Premium Amenities": [
+        "Golf Putting Green"
+      ]
+    },
+    "safety_tier": "3 Tier",
+    "basement_parking_per_unit": 1,
+    "sustainability": [
+      "Low-VOC paints and materials"
+    ],
+    "green_building": {
+      "Core": [
+        "IGBC Gold / Platinum"
+      ],
+      "Premium differentiators": [
+        "SmartScore"
+      ],
+      "Future-Focused": [
+        "Net Zero Energy"
+      ]
+    },
+    "green_area_pct": 35,
+    "theme": "Luxury"
+  }
+}

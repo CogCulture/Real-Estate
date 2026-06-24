@@ -88,7 +88,7 @@ function makeTree(x, z, scene, scale = 1) {
   const g = new THREE.Group();
 
   const crownMat = _treeCrownMats[Math.floor(Math.random() * _treeCrownMats.length)];
-  const crown = new THREE.Mesh(new THREE.CircleGeometry(2.6 * scale, 20), crownMat);
+  const crown = new THREE.Mesh(new THREE.CircleGeometry(1.8 * scale, 20), crownMat);
   crown.rotation.x = -Math.PI / 2;
   crown.position.y = 0.08;
   crown.castShadow = true;
@@ -96,7 +96,7 @@ function makeTree(x, z, scene, scale = 1) {
   g.add(crown);
 
   const crownInner = new THREE.Mesh(
-    new THREE.CircleGeometry(1.1 * scale, 18),
+    new THREE.CircleGeometry(0.8 * scale, 18),
     new THREE.MeshBasicMaterial({ color: 0x667a60 })
   );
   crownInner.rotation.x = -Math.PI / 2;
@@ -231,6 +231,7 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
     // ── Materials ──────────────────────────────────────────────────────────
     const asphaltMat = new THREE.MeshStandardMaterial({ color: 0x2d2f31, roughness: 0.95, envMapIntensity: 0.02 });
     const lineWhiteMat = new THREE.MeshStandardMaterial({ color: 0xd5dbdb, roughness: 0.8 });
+    const pedestrianStoneMat = new THREE.MeshStandardMaterial({ color: 0xe2c99f, roughness: 0.9, envMapIntensity: 0.02 });
 
     // ── Zones ──────────────────────────────────────────────────────────────
     const buildingZoneTypes = ['residential', 'commercial', 'mixed_use', 'industrial', 'institutional', 'amenity'];
@@ -242,6 +243,10 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
       const zy = zone.y_m + zh / 2;
       const color = new THREE.Color(zone.color || ZONE_COLORS[zone.type] || '#7F8C8D');
       const isBuilding = buildingZoneTypes.includes(zone.type);
+
+      const group = new THREE.Group();
+      group.position.set(zx, 0, zy);
+      group.rotation.y = -(zone.rotation_deg || 0) * Math.PI / 180;
 
       if (isBuilding) {
         const footprintShape = createRoundedRectShape(
@@ -258,10 +263,10 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
           })
         );
         footprint.rotation.x = -Math.PI / 2;
-        footprint.position.set(zx, 0.08, zy);
+        footprint.position.set(0, 0.08, 0);
         footprint.castShadow = true;
         footprint.receiveShadow = true;
-        scene.add(footprint);
+        group.add(footprint);
 
         const roofInsetShape = createRoundedRectShape(
           Math.max(1.4, zw - 6),
@@ -277,9 +282,10 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
           })
         );
         roofInset.rotation.x = -Math.PI / 2;
-        roofInset.position.set(zx, 0.09, zy);
-        scene.add(roofInset);
+        roofInset.position.set(0, 0.09, 0);
+        group.add(roofInset);
 
+        scene.add(group);
       } else {
         // Flat zone (parks, water, parking, etc.)
         if (zone.type === 'water_body') {
@@ -294,9 +300,9 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
             })
           );
           lake.rotation.x = -Math.PI / 2;
-          lake.position.set(zx, 0.04, zy);
+          lake.position.set(0, 0.04, 0);
           lake.receiveShadow = true;
-          scene.add(lake);
+          group.add(lake);
         } else {
           const flat = new THREE.Mesh(
             new THREE.ShapeGeometry(createRoundedRectShape(zw, zh, Math.min(zw, zh) * 0.12)),
@@ -307,20 +313,22 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
             })
           );
           flat.rotation.x = -Math.PI / 2;
-          flat.position.set(zx, 0.03, zy);
+          flat.position.set(0, 0.03, 0);
           flat.receiveShadow = true;
-          scene.add(flat);
+          group.add(flat);
         }
 
         // Scatter trees in green areas
         if (['green_belt', 'park', 'open_space'].includes(zone.type)) {
           const treeCount = Math.min(25, Math.floor((zw * zh) / 400));
           for (let t = 0; t < treeCount; t++) {
-            const tx = zx - zw / 2 + 5 + Math.random() * (zw - 10);
-            const tz = zy - zh / 2 + 5 + Math.random() * (zh - 10);
-            makeTree(tx, tz, scene, 1);
+            const tx = -zw / 2 + 5 + Math.random() * (zw - 10);
+            const tz = -zh / 2 + 5 + Math.random() * (zh - 10);
+            makeTree(tx, tz, group, 1);
           }
         }
+
+        scene.add(group);
       }
     });
 
@@ -329,6 +337,8 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
       const pts = road.points_m;
       const roadW = road.width_m;
       if (pts.length < 2) return;
+
+      const isPedestrian = road.type === 'pedestrian';
 
       for (let i = 0; i < pts.length - 1; i++) {
         const p1 = pts[i];
@@ -341,33 +351,37 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
         const midX = (p1[0] + p2[0]) / 2;
         const midZ = (p1[1] + p2[1]) / 2;
 
-        // Asphalt surface
-        const rm = new THREE.Mesh(new THREE.BoxGeometry(roadW, 0.4, len), asphaltMat);
+        // Surface geometry
+        const mat = isPedestrian ? pedestrianStoneMat : asphaltMat;
+        const rm = new THREE.Mesh(new THREE.BoxGeometry(roadW, 0.4, len), mat);
         rm.position.set(midX, 0.2, midZ);
         rm.rotation.y = angle;
         rm.receiveShadow = true;
         scene.add(rm);
 
-        // Center lane dash
-        const dashLen = 3, gapLen = 4;
-        const dashCount = Math.floor(len / (dashLen + gapLen));
-        for (let d = 0; d < dashCount; d++) {
-          const t = (d * (dashLen + gapLen) + dashLen / 2) / len;
-          if (t > 1) break;
-          const dm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, dashLen), lineWhiteMat);
-          dm.position.set(p1[0] + dx * t, 0.42, p1[1] + dz * t);
-          dm.rotation.y = angle;
-          scene.add(dm);
-        }
+        // Render lane markings only for non-pedestrian roads
+        if (!isPedestrian) {
+          // Center lane dash
+          const dashLen = 3, gapLen = 4;
+          const dashCount = Math.floor(len / (dashLen + gapLen));
+          for (let d = 0; d < dashCount; d++) {
+            const t = (d * (dashLen + gapLen) + dashLen / 2) / len;
+            if (t > 1) break;
+            const dm = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, dashLen), lineWhiteMat);
+            dm.position.set(p1[0] + dx * t, 0.42, p1[1] + dz * t);
+            dm.rotation.y = angle;
+            scene.add(dm);
+          }
 
-        // Edge white lines
-        [-roadW / 2 + 0.4, roadW / 2 - 0.4].forEach(offset => {
-          const perpX = dz / len, perpZ = -dx / len;
-          const em = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.42, len), lineWhiteMat);
-          em.position.set(midX + perpX * offset, 0.42, midZ + perpZ * offset);
-          em.rotation.y = angle;
-          scene.add(em);
-        });
+          // Edge white lines
+          [-roadW / 2 + 0.4, roadW / 2 - 0.4].forEach(offset => {
+            const perpX = dz / len, perpZ = -dx / len;
+            const em = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.42, len), lineWhiteMat);
+            em.position.set(midX + perpX * offset, 0.42, midZ + perpZ * offset);
+            em.rotation.y = angle;
+            scene.add(em);
+          });
+        }
       }
     });
 

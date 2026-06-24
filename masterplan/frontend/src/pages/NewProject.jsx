@@ -58,7 +58,8 @@ export default function NewProject() {
           site_width: data.width,
           site_height: data.height,
           site_area: data.area,
-          boundary_geojson: data.geojson
+          boundary_geojson: data.geojson,
+          features: initialProject?.features
         });
 
         // Update layout meta dimensions/scaling
@@ -118,9 +119,23 @@ export default function NewProject() {
         features: JSON.stringify(formData)
       });
 
-      // 2. Call AI Engine with site dimensions and null features so it immediately uses fallback
-      const initialLayout = await generateSuggestedLayout(project.site_width, project.site_height, project.id, null);
-      initialLayout.meta.north_angle_deg = siteData.north_angle_deg || 0;
+      // Create an empty initial layout instead of generating with AI
+      const canvasWidth = 960;
+      const scale = parseFloat((canvasWidth / project.site_width).toFixed(4));
+      const canvasHeight = Math.round(project.site_height * scale);
+
+      const initialLayout = {
+        meta: {
+          canvas_width_px: canvasWidth,
+          canvas_height_px: canvasHeight,
+          scale_px_per_m: scale,
+          north_angle_deg: siteData.north_angle_deg || 0
+        },
+        amenities: [],
+        roads: [],
+        trees: [],
+        towers: []
+      };
 
       await saveLayout({
         project_id: project.id,
