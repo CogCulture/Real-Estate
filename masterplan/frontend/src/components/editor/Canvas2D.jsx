@@ -371,7 +371,6 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
   const filteredRoads = useMemo(() => {
     if (!roads) return [];
     const entryGates = amenities ? amenities.filter(a => a.type === 'entry_exit') : [];
-    const nonBoundaryRoads = roads.filter(r => !r.label || !r.label.toLowerCase().includes('boundary'));
 
     return roads.filter(road => {
       const isBoundary = road.label && road.label.toLowerCase().includes('boundary');
@@ -379,57 +378,18 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
 
       const pts = road.points_px || [];
       if (pts.length < 2) return true;
+      const bx1 = pts[0][0], by1 = pts[0][1];
+      const bx2 = pts[1][0], by2 = pts[1][1];
+      const bWidth = road.width_px || 20;
 
-      // 1. Check if near any entry gate
+      // Only hide boundary roads that physically overlap an entry gate
+      // (roads near internal road junctions are KEPT — only trees/paths are cleared there)
       for (const gate of entryGates) {
         const gateCx = gate.x_px + gate.width_px / 2;
         const gateCy = gate.y_px + gate.height_px / 2;
-        
-        const d = getDistancePtToSeg(gateCx, gateCy, pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
-        const clearRadius = Math.max(gate.width_px, gate.height_px) * 0.6 + (road.width_px || 20) / 2;
-        if (d < clearRadius) {
-          return false;
-        }
-      }
-
-      // 2. Check if near any non-boundary road endpoint (Junction Clearing)
-      for (const nbRoad of nonBoundaryRoads) {
-        const nbPts = nbRoad.points_px || [];
-        if (nbPts.length < 2) continue;
-        
-        const threshold = (nbRoad.width_px || 20) / 2 + (road.width_px || 20) / 2 + 5;
-        const roadMidX = (pts[0][0] + pts[1][0]) / 2;
-        const roadMidY = (pts[0][1] + pts[1][1]) / 2;
-
-        const ends = [nbPts[0], nbPts[nbPts.length - 1]];
-        for (const end of ends) {
-          const dMid = Math.hypot(roadMidX - end[0], roadMidY - end[1]);
-          const dPt1 = Math.hypot(pts[0][0] - end[0], pts[0][1] - end[1]);
-          const dPt2 = Math.hypot(pts[1][0] - end[0], pts[1][1] - end[1]);
-          
-          if (dMid < threshold || dPt1 < threshold || dPt2 < threshold) {
-            return false;
-          }
-        }
-      }
-
-      // 3. Check if boundary pedestrian path is crossed by a non-boundary road
-      const isPath = road.label && road.label.toLowerCase().includes('path');
-      if (isPath) {
-        for (const nbRoad of nonBoundaryRoads) {
-          const nbPts = nbRoad.points_px || [];
-          for (let i = 0; i < nbPts.length - 1; i++) {
-            if (doSegmentsIntersect(pts[0], pts[1], nbPts[i], nbPts[i+1])) {
-              return false;
-            }
-            const d1 = getDistancePtToSeg(nbPts[i][0], nbPts[i][1], pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
-            const d2 = getDistancePtToSeg(nbPts[i+1][0], nbPts[i+1][1], pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
-            const threshold = (nbRoad.width_px || 20) / 2 + 5;
-            if (d1 < threshold || d2 < threshold) {
-              return false;
-            }
-          }
-        }
+        const d = getDistancePtToSeg(gateCx, gateCy, bx1, by1, bx2, by2);
+        const clearRadius = Math.max(gate.width_px, gate.height_px) * 0.75 + bWidth / 2;
+        if (d < clearRadius) return false;
       }
 
       return true;
@@ -442,35 +402,37 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
     const nonBoundaryRoads = roads ? roads.filter(r => !r.label || !r.label.toLowerCase().includes('boundary')) : [];
 
     return amenities.filter(amenity => {
-      const isBoundaryTree = amenity.id && (amenity.id.startsWith('tree_') || amenity.type === 'tree_cluster') && 
+      // Identify boundary-planted trees and pedestrian path markers
+      const isBoundaryTree = amenity.id && (amenity.id.startsWith('tree_') || amenity.type === 'tree_cluster') &&
                              (amenity.id.includes('tree_') && amenity.id.split('_').length > 2);
+      const isBoundaryPath = amenity.type === 'pedestrian' ||
+                             (amenity.label && amenity.label.toLowerCase().includes('path') &&
+                              amenity.label.toLowerCase().includes('boundary'));
 
-      if (!isBoundaryTree) return true;
+      // Only apply clearing logic to boundary-placed items
+      if (!isBoundaryTree && !isBoundaryPath) return true;
 
-      const treeCx = amenity.x_px + amenity.width_px / 2;
-      const treeCy = amenity.y_px + amenity.height_px / 2;
+      const cx = amenity.x_px + (amenity.width_px || 0) / 2;
+      const cy = amenity.y_px + (amenity.height_px || 0) / 2;
 
-      // 1. Check if near any entry gate
+      // Hide if overlapping an entry gate
       for (const gate of entryGates) {
         const gateCx = gate.x_px + gate.width_px / 2;
         const gateCy = gate.y_px + gate.height_px / 2;
         const gateSize = Math.max(gate.width_px, gate.height_px);
-        const dist = Math.hypot(treeCx - gateCx, treeCy - gateCy);
-        if (dist < gateSize * 1.3) {
-          return false;
-        }
+        const dist = Math.hypot(cx - gateCx, cy - gateCy);
+        if (dist < gateSize * 1.3) return false;
       }
 
-      // 2. Check if near any non-boundary road
+      // Hide if overlapping any internal (non-boundary) road segment
       for (const nbRoad of nonBoundaryRoads) {
         const nbPts = nbRoad.points_px || [];
         const roadWidth = nbRoad.width_px || 20;
-        const threshold = roadWidth / 2 + 18;
+        // Trees need more clearance than path markers
+        const threshold = isBoundaryTree ? roadWidth / 2 + 18 : roadWidth / 2 + 4;
         for (let i = 0; i < nbPts.length - 1; i++) {
-          const d = getDistancePtToSeg(treeCx, treeCy, nbPts[i][0], nbPts[i][1], nbPts[i+1][0], nbPts[i+1][1]);
-          if (d < threshold) {
-            return false;
-          }
+          const d = getDistancePtToSeg(cx, cy, nbPts[i][0], nbPts[i][1], nbPts[i+1][0], nbPts[i+1][1]);
+          if (d < threshold) return false;
         }
       }
 
@@ -4021,80 +3983,8 @@ out skel qt;`;
             );
           })}
 
-          {/* Junction Fills and Gate Connectors */}
-          {roads && (() => {
-            const boundaryRoads = roads.filter(r => r.label && r.label.toLowerCase().includes('boundary'));
-            const internalRoads = roads.filter(r => !r.label || !r.label.toLowerCase().includes('boundary'));
-            const gates = amenities ? amenities.filter(a => a.type === 'entry_exit') : [];
-            const connectors = [];
 
-            // 1. Internal Road to Boundary Junction Fills
-            internalRoads.forEach(intRoad => {
-              const pts = intRoad.points_px || [];
-              if (pts.length < 2) return;
-              const intWidth = intRoad.width_px || 20;
-              
-              const ends = [pts[0], pts[pts.length - 1]];
-              ends.forEach(end => {
-                boundaryRoads.forEach(bRoad => {
-                  const bPts = bRoad.points_px || [];
-                  if (bPts.length < 2) return;
-                  const bMidX = (bPts[0][0] + bPts[1][0]) / 2;
-                  const bMidY = (bPts[0][1] + bPts[1][1]) / 2;
-                  const bWidth = bRoad.width_px || 20;
-                  
-                  const threshold = bWidth / 2 + intWidth / 2 + 5;
-                  if (Math.hypot(end[0] - bMidX, end[1] - bMidY) < threshold ||
-                      Math.hypot(end[0] - bPts[0][0], end[1] - bPts[0][1]) < threshold ||
-                      Math.hypot(end[0] - bPts[1][0], end[1] - bPts[1][1]) < threshold) {
-                    
-                    connectors.push(
-                      <Line
-                        key={`jct-${intRoad.id}-${bRoad.id}`}
-                        points={[end[0], end[1], bPts[0][0], bPts[0][1], bPts[1][0], bPts[1][1]]}
-                        stroke={intRoad.type === 'pedestrian' ? (stonePattern || '#e2c99f') : '#5C6670'}
-                        strokeWidth={intWidth}
-                        lineJoin="round"
-                        lineCap="round"
-                        listening={false}
-                      />
-                    );
-                  }
-                });
-              });
-            });
 
-            // 2. Gate to Boundary Connectors
-            gates.forEach(gate => {
-              const gateCx = gate.x_px + gate.width_px / 2;
-              const gateCy = gate.y_px + gate.height_px / 2;
-              const clearRadius = Math.max(gate.width_px, gate.height_px) * 0.6 + 10;
-              
-              boundaryRoads.forEach(bRoad => {
-                const bPts = bRoad.points_px || [];
-                if (bPts.length < 2) return;
-                
-                const d1 = Math.hypot(bPts[0][0] - gateCx, bPts[0][1] - gateCy);
-                const d2 = Math.hypot(bPts[1][0] - gateCx, bPts[1][1] - gateCy);
-                
-                if ((d1 >= clearRadius && d1 < clearRadius + 30) || (d2 >= clearRadius && d2 < clearRadius + 30)) {
-                  const pt = d1 < d2 ? bPts[0] : bPts[1];
-                  connectors.push(
-                    <Line
-                      key={`gateconn-${gate.id}-${bRoad.id}`}
-                      points={[pt[0], pt[1], gateCx, gateCy]}
-                      stroke={bRoad.type === 'pedestrian' ? (stonePattern || '#e2c99f') : '#5C6670'}
-                      strokeWidth={bRoad.width_px}
-                      lineCap="round"
-                      listening={false}
-                    />
-                  );
-                }
-              });
-            });
-
-            return <>{connectors}</>;
-          })()}
 
           {/* Active Road Drawing Draft */}
           {roadPoints.length > 0 && (
