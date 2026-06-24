@@ -1,0 +1,10 @@
+{$DOMAIN_NAME:localhost} {
+    encode gzip
+    root * /srv
+    route {
+        reverse_proxy /api/* backend:8000
+        reverse_proxy /outputs/* backend:8000
+        try_files {path} {path}/ /index.html
+        file_server
+    }
+}
