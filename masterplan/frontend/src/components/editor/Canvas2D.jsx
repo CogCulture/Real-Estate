@@ -3509,8 +3509,8 @@ out skel qt;`;
                     dash={(isClusterSelected && !isSelected) ? [6, 4] : []}
                   />
                 )}
-                {/* Outer casing / Sidewalks */}
-                {road.type !== 'pedestrian' && road.type !== 'cycle_track' && (
+                {/* Outer casing / Sidewalks - skip for ring roads to avoid white halo */}
+                {road.type !== 'pedestrian' && road.type !== 'cycle_track' && !road.type.includes('ring') && (
                   <Line
                     name="road-path"
                     points={flatPoints}

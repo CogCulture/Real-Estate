@@ -1,0 +1,43 @@
+{
+  "name": "re-2.0",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CogCulture/Real-Estate.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/CogCulture/Real-Estate/issues"
+  },
+  "homepage": "https://github.com/CogCulture/Real-Estate#readme",
+  "devDependencies": {
+    "@types/clipper-lib": "^6.4.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/rbush": "^4.0.0",
+    "@types/seedrandom": "^3.0.8",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "clipper-lib": "^6.4.2",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "polygon-clipping": "^0.15.7",
+    "rbush": "^4.0.1",
+    "seedrandom": "^3.0.5",
+    "socket.io": "^4.8.3",
+    "zod": "^4.4.3"
+  }
+}
