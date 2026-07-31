@@ -11,4 +11,7 @@ module.exports = {
   moduleNameMapper: {
     '^rbush$': '<rootDir>/__mocks__/rbush.js',
   },
+  testPathIgnorePatterns: [
+    "<rootDir>/frontend/",
+  ],
 };

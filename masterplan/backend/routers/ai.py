@@ -306,7 +306,6 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
             collision_result.get("conflicts", []),
             collision_result.get("boundary_violations", [])
         )
-        report["grade"] = "B"
         report["summary"] += " (Procedural fallback generated after retry exhaustion)"
         collision_result["validation"] = report
         return collision_result
