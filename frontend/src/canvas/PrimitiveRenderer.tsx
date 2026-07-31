@@ -1,7 +1,7 @@
 import React from 'react';
 import { Line, Circle, Text } from 'react-konva';
-import { RenderPrimitive, RenderPolygon, RenderCircle, RenderText } from '../types';
-import { resolveTheme, StyleToken } from '../themes';
+import type { RenderPrimitive, RenderPolygon, RenderCircle, RenderText } from '../types';
+import { resolveTheme, type StyleToken } from '../themes';
 
 interface Props {
   primitive: RenderPrimitive;

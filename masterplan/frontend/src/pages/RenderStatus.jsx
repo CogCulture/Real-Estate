@@ -93,7 +93,7 @@ export default function RenderStatus() {
       <div className="flex-1 max-w-5xl w-full mx-auto px-4 py-8 flex flex-col gap-6">
         {/* Back Link */}
         <div className="flex gap-2">
-          <Button onClick={() => navigate('/')} variant="secondary" className="py-1 px-3 text-xs">
+          <Button onClick={() => navigate('/projects')} variant="secondary" className="py-1 px-3 text-xs">
             <ArrowLeft size={14} />
             Back to Dashboard
           </Button>

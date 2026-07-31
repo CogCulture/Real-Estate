@@ -39,65 +39,7 @@ class BoundingBox:
         return math.sqrt(dx*dx + dy*dy)
 
 import json
-
-def is_point_in_polygon(x: float, y: float, polygon: list) -> bool:
-    num = len(polygon)
-    j = num - 1
-    c = False
-    for i in range(num):
-        if ((polygon[i][1] > y) != (polygon[j][1] > y)) and \
-                (x < (polygon[j][0] - polygon[i][0]) * (y - polygon[i][1]) / (polygon[j][1] - polygon[i][1] + 1e-9) + polygon[i][0]):
-            c = not c
-        j = i
-    return c
-
-def get_boundary_coords_pct(boundary_geojson_str: Any, sw: float, sh: float) -> list:
-    if not boundary_geojson_str:
-        return None
-    try:
-        if not isinstance(boundary_geojson_str, str):
-            geojson = boundary_geojson_str
-        else:
-            geojson = json.loads(boundary_geojson_str)
-            
-        geometry = None
-        if "geometry" in geojson:
-            geometry = geojson["geometry"]
-        elif "features" in geojson and len(geojson["features"]) > 0:
-            geometry = geojson["features"][0].get("geometry")
-        elif "type" in geojson and geojson["type"] == "Polygon":
-            geometry = geojson
-
-        if geometry and geometry.get("type") == "Polygon":
-            coords = geometry["coordinates"][0]
-            lats = [c[1] for c in coords]
-            lngs = [c[0] for c in coords]
-            min_lat = min(lats)
-            max_lat = max(lats)
-            min_lng = min(lngs)
-            max_lng = max(lngs)
-            
-            center_lat = (min_lat + max_lat) / 2.0
-            cos_center = math.cos(center_lat * math.pi / 180.0)
-            
-            actual_w = (max_lng - min_lng) * 111320.0 * cos_center
-            actual_h = (max_lat - min_lat) * 111320.0
-            
-            if actual_w <= 0: actual_w = sw
-            if actual_h <= 0: actual_h = sh
-            
-            boundary_coords_pct = []
-            for c in coords:
-                x_m = (c[0] - min_lng) * 111320.0 * cos_center
-                y_m = (max_lat - c[1]) * 111320.0
-                
-                x_pct = x_m / actual_w
-                y_pct = y_m / actual_h
-                boundary_coords_pct.append([round(x_pct, 4), round(y_pct, 4)])
-            return boundary_coords_pct
-    except Exception as e:
-        print(f"Error parsing boundary GeoJSON in validator: {e}")
-    return None
+from planning_engine import is_point_in_polygon, get_boundary_coords_pct
 
 def validate_masterplan(layout_json: Dict[str, Any], brief: Dict[str, Any]) -> Dict[str, Any]:
     score = 100

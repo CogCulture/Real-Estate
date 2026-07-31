@@ -129,7 +129,11 @@ export default function NewProject() {
           canvas_width_px: canvasWidth,
           canvas_height_px: canvasHeight,
           scale_px_per_m: scale,
-          north_angle_deg: siteData.north_angle_deg || 0
+          north_angle_deg: siteData.north_angle_deg || 0,
+          front_setback_m: formData.front_setback_m || 6.0,
+          rear_setback_m: formData.rear_setback_m || 6.0,
+          side_setback_m: formData.side_setback_m || 6.0,
+          front_edge_index: 0
         },
         amenities: [],
         roads: [],
@@ -161,7 +165,7 @@ export default function NewProject() {
       <div className="flex-1 max-w-6xl w-full mx-auto px-4 py-6 flex flex-col gap-6">
         {/* Back Link */}
         <div className="flex items-center justify-between">
-          <Button onClick={() => navigate('/')} variant="secondary" className="py-1 px-3 text-xs">
+          <Button onClick={() => navigate('/projects')} variant="secondary" className="py-1 px-3 text-xs">
             <ArrowLeft size={14} />
             Back to Dashboard
           </Button>
@@ -221,7 +225,7 @@ export default function NewProject() {
       {isLoading && (
         <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
           <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-          <p className="mt-4 text-indigo-900 font-bold text-lg">Generating Layout with Claude AI...</p>
+          <p className="mt-4 text-indigo-900 font-bold text-lg">Generating Layout with AI Planner...</p>
           <p className="text-slate-500 text-sm mt-2">This may take up to 30 seconds.</p>
         </div>
       )}

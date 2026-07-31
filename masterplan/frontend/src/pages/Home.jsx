@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, FolderKanban, MapPin, Calendar, Trash2 } from 'lucide-react';
+import { Plus, FolderKanban, MapPin, Calendar, Trash2, Map } from 'lucide-react';
 import { fetchProjects, deleteProject } from '../api/projects';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -26,17 +26,24 @@ export default function Home() {
     loadProjects();
   }, []);
 
-  const handleDelete = async (e, id) => {
+  const [projectToDelete, setProjectToDelete] = useState(null);
+
+  const handleDeleteClick = (e, id) => {
     e.preventDefault();
     e.stopPropagation();
-    if (confirm("Are you sure you want to delete this project?")) {
-      try {
-        await deleteProject(id);
-        toast.success("Project deleted successfully");
-        loadProjects();
-      } catch (err) {
-        toast.error("Failed to delete project");
-      }
+    setProjectToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!projectToDelete) return;
+    try {
+      await deleteProject(projectToDelete);
+      toast.success("Project deleted successfully");
+      loadProjects();
+    } catch (err) {
+      toast.error("Failed to delete project");
+    } finally {
+      setProjectToDelete(null);
     }
   };
 
@@ -51,10 +58,22 @@ export default function Home() {
           </h1>
           <p className="text-slate-600 text-sm mt-1">Manage and edit your real estate layouts and photorealistic renders.</p>
         </div>
-        <Button onClick={() => navigate('/new-project')} variant="primary" className="py-2.5">
-          <Plus size={16} />
-          Create New Project
-        </Button>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => navigate('/maps')} 
+            className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 hover:text-slate-950 border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded transition-colors"
+          >
+            <Map size={16} />
+            Configure Maps
+          </button>
+          <button 
+            onClick={() => navigate('/new-project')}
+            className="flex items-center gap-1.5 bg-black hover:bg-neutral-800 text-white font-semibold py-2.5 px-4 rounded shadow text-sm transition-all hover:scale-[1.02]"
+          >
+            <Plus size={16} />
+            Create New Project
+          </button>
+        </div>
       </div>
 
       {/* Project Cards Grid */}
@@ -84,7 +103,7 @@ export default function Home() {
                 <div className="flex justify-between items-start mb-2">
                   <h3 className="text-base font-bold text-slate-900 line-clamp-1">{project.name}</h3>
                   <button
-                    onClick={(e) => handleDelete(e, project.id)}
+                    onClick={(e) => handleDeleteClick(e, project.id)}
                     className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-100 transition-all"
                     title="Delete Project"
                   >
@@ -111,6 +130,50 @@ export default function Home() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete Project Confirmation Modal */}
+      {projectToDelete && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden transform transition-all scale-100 duration-300">
+            <div className="bg-rose-900 p-5 text-white flex items-center gap-3">
+              <div className="p-2 bg-rose-500/20 text-rose-300 rounded-lg">
+                <Trash2 size={20} className="animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Delete Project</h3>
+                <p className="text-[11px] text-rose-300">Remove project design workspace</p>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm font-semibold text-slate-800 mb-2">
+                Are you sure you want to delete this project?
+              </p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This will permanently delete this project workspace, including all of its layouts, boundaries, configurations, and renders. <strong className="text-rose-600">This action cannot be undone.</strong>
+              </p>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setProjectToDelete(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 size={14} />
+                Delete Project
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

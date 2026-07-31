@@ -11,7 +11,9 @@ export function exportLayoutToJSON(projectId, zones, roads, amenities, labels, m
       canvas_height_px: meta.canvas_height_px,
       scale_px_per_m: meta.scale_px_per_m,
       north_angle_deg: meta.north_angle_deg || 0,
-      total_area_sqm: meta.total_area_sqm
+      total_area_sqm: meta.total_area_sqm,
+      boundary_layers: meta.boundary_layers || [],
+      overlap_priorities: meta.overlap_priorities || {}
     },
     zones: zones.map(z => ({
       id: z.id,
@@ -30,6 +32,8 @@ export function exportLayoutToJSON(projectId, zones, roads, amenities, labels, m
       opacity: z.opacity || 0.8,
       rotation_deg: z.rotation_deg || 0,
       footprint: z.footprint || 'rectangular',
+      points_px: z.points_px,
+      points_m: z.points_m,
       properties: z.properties || {}
     })),
     roads: roads.map(r => ({
@@ -42,7 +46,10 @@ export function exportLayoutToJSON(projectId, zones, roads, amenities, labels, m
       width_m: r.width_m,
       color: r.color,
       has_median: r.has_median || false,
-      median_width_m: r.median_width_m || 0
+      median_width_m: r.median_width_m || 0,
+      sharp_corners: r.sharp_corners || false,
+      tension: r.tension || 0,
+      closed: r.closed || false
     })),
     amenities: amenities.map(a => ({
       id: a.id,
@@ -55,7 +62,16 @@ export function exportLayoutToJSON(projectId, zones, roads, amenities, labels, m
       x_m: a.x_m,
       y_m: a.y_m,
       width_m: a.width_m,
-      height_m: a.height_m
+      height_m: a.height_m,
+      rotation_deg: a.rotation_deg || 0,
+      rotation: a.rotation || 0,
+      shape: a.shape || 'rectangular',
+      properties: a.properties || {},
+      access_variant: a.access_variant,
+      tree_variant: a.tree_variant,
+      density: a.density,
+      points_px: a.points_px,
+      points_m: a.points_m
     })),
     labels: labels.map(l => ({
       id: l.id,

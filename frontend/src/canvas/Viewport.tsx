@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Stage } from 'react-konva';
+import { Stage, Layer } from 'react-konva';
 import { useEditorStore } from '../store/editor';
-import { RenderScene } from '../types';
+import type { RenderScene } from '../types';
 import { LayerManager } from './LayerManager';
 import { InfiniteGrid } from './InfiniteGrid';
 

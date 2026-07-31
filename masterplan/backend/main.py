@@ -33,6 +33,17 @@ app.include_router(layouts.router, prefix="/api/layouts", tags=["layouts"])
 app.include_router(renders.router, prefix="/api/renders", tags=["renders"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 
+# ── Stub endpoints ────────────────────────────────────────────────────────────
+# These are probed by browser extensions / external dev-tools.
+# Returning a clean 200 keeps the logs free of 404 noise.
+@app.get("/api/users/me", tags=["stub"])
+async def stub_users_me():
+    return {"id": "local", "role": "admin", "auth": "none"}
+
+@app.get("/api/admin/status", tags=["stub"])
+async def stub_admin_status():
+    return {"status": "ok", "env": "development"}
+
 if __name__ == "__main__":
     import uvicorn
     import subprocess
@@ -55,8 +66,8 @@ if __name__ == "__main__":
     celery_proc = subprocess.Popen(celery_cmd, cwd=backend_dir)
 
     try:
-        print("Starting FastAPI Uvicorn web server on http://localhost:8000...")
-        uvicorn.run("main:app", host="0.0.0.0", port=8000)
+        print("Starting FastAPI Uvicorn web server on http://localhost:8001...")
+        uvicorn.run("main:app", host="0.0.0.0", port=8001)
     finally:
         print("Terminating Celery worker process...")
         celery_proc.terminate()

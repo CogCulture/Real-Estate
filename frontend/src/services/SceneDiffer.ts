@@ -1,5 +1,4 @@
-import { RenderScene, RenderPrimitive } from '../../shared/types';
-import { SceneNode } from './SceneGraph';
+import type { RenderScene, RenderPrimitive } from '../../../shared/types';
 
 export interface DiffResult {
   added: RenderPrimitive[];

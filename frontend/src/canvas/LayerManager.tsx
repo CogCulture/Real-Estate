@@ -1,6 +1,6 @@
 import React from 'react';
 import { Layer } from 'react-konva';
-import { RenderScene } from '../types';
+import type { RenderScene } from '../types';
 import { PrimitiveRenderer } from './PrimitiveRenderer';
 import { useEditorStore } from '../store/editor';
 

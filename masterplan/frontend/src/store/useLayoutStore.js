@@ -17,7 +17,42 @@ const initialLayoutState = {
   selectedElementId: null,
   selectedCluster: null,
   activeTool: 'SELECT', // SELECT, RESIDENTIAL, COMMERCIAL, mixed_use, green_belt, park, water, parking, amenity, road_primary, etc.
-  gridSnapped: true
+  gridSnapped: true,
+  landUseModalOpen: false
+};
+
+const propagateRoadConnectionUpdates = (roads, id, oldPoints, newPoints, scaleVal) => {
+  if (!oldPoints || !newPoints || oldPoints.length !== newPoints.length) return roads;
+  const changes = [];
+  for (let i = 0; i < oldPoints.length; i++) {
+    const op = oldPoints[i];
+    const np = newPoints[i];
+    if (Math.abs(op[0] - np[0]) > 0.1 || Math.abs(op[1] - np[1]) > 0.1) {
+      changes.push({ old: op, new: np });
+    }
+  }
+  if (changes.length === 0) return roads;
+  return roads.map(r => {
+    if (r.id === id) return r;
+    if (!r.points_px || r.points_px.length === 0) return r;
+    let modified = false;
+    const nextPointsPx = r.points_px.map(p => {
+      const match = changes.find(c => Math.sqrt((p[0] - c.old[0])**2 + (p[1] - c.old[1])**2) < 0.5);
+      if (match) {
+        modified = true;
+        return [...match.new];
+      }
+      return p;
+    });
+    if (modified) {
+      return {
+        ...r,
+        points_px: nextPointsPx,
+        points_m: nextPointsPx.map(p => [p[0] / scaleVal, p[1] / scaleVal])
+      };
+    }
+    return r;
+  });
 };
 
 export const useLayoutStore = create((set, get) => {
@@ -42,6 +77,8 @@ export const useLayoutStore = create((set, get) => {
       meta: initialLayoutState.meta
     })],
     historyIndex: 0,
+
+    setLandUseModalOpen: (open) => set({ landUseModalOpen: open }),
 
     setMeta: (newMeta) => set((state) => {
       const updatedMeta = { ...state.meta, ...newMeta };
@@ -70,9 +107,8 @@ export const useLayoutStore = create((set, get) => {
 
     clearBoundaries: () => set((state) => {
       const newRoads = state.roads.filter(r => {
-        if (!r.width_px) return false;
+        // Keep all user-drawn roads and ring roads. Only remove generated boundary segments.
         if (r.label && r.label.toLowerCase().includes('boundary')) return false;
-        if (r.type && r.type.includes('ring_')) return false;
         return true;
       });
       const newAmenities = state.amenities.filter(a => {
@@ -312,6 +348,11 @@ export const useLayoutStore = create((set, get) => {
       };
     }),
 
+    updateZoneWithoutHistory: (id, updates) => set((state) => {
+      const zones = state.zones.map((z) => (z.id === id ? { ...z, ...updates } : z));
+      return { zones };
+    }),
+
     deleteZone: (id) => set((state) => {
       const zones = state.zones.filter((z) => z.id !== id);
       const nextState = { ...state, zones, selectedElementId: state.selectedElementId === id ? null : state.selectedElementId };
@@ -332,7 +373,11 @@ export const useLayoutStore = create((set, get) => {
     }),
 
     updateRoad: (id, updates) => set((state) => {
-      const roads = state.roads.map((r) => (r.id === id ? { ...r, ...updates } : r));
+      const oldRoad = state.roads.find(r => r.id === id);
+      let roads = state.roads.map((r) => (r.id === id ? { ...r, ...updates } : r));
+      if (oldRoad && updates.points_px) {
+        roads = propagateRoadConnectionUpdates(roads, id, oldRoad.points_px, updates.points_px, state.meta.scale_px_per_m || 2.4);
+      }
       const nextState = { ...state, roads };
       return {
         ...nextState,
@@ -341,7 +386,11 @@ export const useLayoutStore = create((set, get) => {
     }),
 
     updateRoadPoints: (id, pointsPx, pointsM) => set((state) => {
-      const roads = state.roads.map((r) => (r.id === id ? { ...r, points_px: pointsPx, points_m: pointsM } : r));
+      const oldRoad = state.roads.find(r => r.id === id);
+      let roads = state.roads.map((r) => (r.id === id ? { ...r, points_px: pointsPx, points_m: pointsM } : r));
+      if (oldRoad && pointsPx) {
+        roads = propagateRoadConnectionUpdates(roads, id, oldRoad.points_px, pointsPx, state.meta.scale_px_per_m || 2.4);
+      }
       return { roads };
     }),
 
@@ -389,6 +438,11 @@ export const useLayoutStore = create((set, get) => {
         ...nextState,
         ...pushHistory(nextState)
       };
+    }),
+
+    updateAmenityWithoutHistory: (id, updates) => set((state) => {
+      const amenities = state.amenities.map((a) => (a.id === id ? { ...a, ...updates } : a));
+      return { amenities };
     }),
 
     deleteAmenity: (id) => set((state) => {

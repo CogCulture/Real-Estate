@@ -8,8 +8,7 @@ export default function StepIndicator({ activeStep }) {
   const steps = [
     { name: '1. Boundaries', icon: Map, path: projectId ? `/new-project?projectId=${projectId}` : '/new-project' },
     { name: '2. 2D Editor', icon: LayoutGrid, path: projectId ? `/editor/${projectId}` : null },
-    { name: '3. 3D Preview', icon: Box, path: projectId ? `/preview/${projectId}` : null },
-    { name: '4. Render', icon: ImageDown, path: projectId ? `/render/${projectId}` : null }
+    { name: '3. Render', icon: ImageDown, path: null }
   ];
 
   return (

@@ -1,9 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useLayoutStore } from '../../store/useLayoutStore';
-import { Trash2, BarChart3, Sliders, Settings, Plus, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Trash2, BarChart3, Sliders, Settings, Plus, ArrowLeft, Eye, EyeOff, Info } from 'lucide-react';
 import Button from '../ui/Button';
 import { ZONE_COLORS, ROAD_COLORS } from '../../utils/colorMap';
 import BoundaryGeneratorModal from './BoundaryGeneratorModal';
+
+const getRotatedPoints = (x, y, w, h, rotation_deg) => {
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const rad = (rotation_deg * Math.PI) / 180;
+  const rotate = (px, py) => {
+    const dx = px - cx;
+    const dy = py - cy;
+    return [
+      dx * Math.cos(rad) - dy * Math.sin(rad) + cx,
+      dx * Math.sin(rad) + dy * Math.cos(rad) + cy
+    ];
+  };
+  return [
+    rotate(x, y),
+    rotate(x + w, y),
+    rotate(x + w, y + h),
+    rotate(x, y + h)
+  ];
+};
 
 export default function PropertiesPanel() {
   const {
@@ -23,13 +44,15 @@ export default function PropertiesPanel() {
     meta,
     setMeta,
     setActiveTool,
-    setSelectedElementId
+    setSelectedElementId,
+    landUseModalOpen,
+    setLandUseModalOpen
   } = useLayoutStore();
 
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBoundaryModalOpen, setIsBoundaryModalOpen] = useState(false);
   const [dropdownsOpen, setDropdownsOpen] = useState(true);
+  const [showBlueprintPreview, setShowBlueprintPreview] = useState(false);
   
   // Quick Actions percentages: default or custom from meta
   // URDPFI/Municipal planning norms (used as RERA disclosure benchmarks)
@@ -44,13 +67,19 @@ export default function PropertiesPanel() {
   }, [meta.land_allocation]);
 
   const [tempTargets, setTempTargets] = useState(landAllocationTargets);
+  const [tempFrontSetback, setTempFrontSetback] = useState(meta.front_setback_m !== undefined ? meta.front_setback_m : 6.0);
+  const [tempRearSetback, setTempRearSetback] = useState(meta.rear_setback_m !== undefined ? meta.rear_setback_m : 6.0);
+  const [tempSideSetback, setTempSideSetback] = useState(meta.side_setback_m !== undefined ? meta.side_setback_m : 6.0);
 
-  // Sync temp targets when modal opens
+  // Sync temp targets and setbacks when modal opens
   useEffect(() => {
-    if (isModalOpen) {
+    if (landUseModalOpen) {
       setTempTargets(landAllocationTargets);
+      setTempFrontSetback(meta.front_setback_m !== undefined ? meta.front_setback_m : 6.0);
+      setTempRearSetback(meta.rear_setback_m !== undefined ? meta.rear_setback_m : 6.0);
+      setTempSideSetback(meta.side_setback_m !== undefined ? meta.side_setback_m : 6.0);
     }
-  }, [isModalOpen, landAllocationTargets]);
+  }, [landUseModalOpen, landAllocationTargets, meta]);
 
   // Total percentage check
   const tempTotal = useMemo(() => {
@@ -71,11 +100,23 @@ export default function PropertiesPanel() {
     }
   }, [selectedElementId]);
 
-  // Find selected item
-  const selectedZone = zones.find(z => z.id === selectedElementId);
-  const selectedRoad = roads.find(r => r.id === selectedElementId);
-  const selectedLabel = labels.find(l => l.id === selectedElementId);
-  const selectedAmenity = amenities.find(a => a.id === selectedElementId);
+  // Find selected item (supports both raw IDs and hyphen-prefixed IDs)
+  let selectedType = null;
+  let selectedCleanId = selectedElementId;
+  if (selectedElementId) {
+    if (selectedElementId.includes('-')) {
+      const parts = selectedElementId.split('-');
+      selectedType = parts[0];
+      selectedCleanId = parts.slice(1).join('-');
+    } else if (selectedElementId.includes('_')) {
+      selectedType = selectedElementId.split('_')[0];
+    }
+  }
+
+  const selectedZone = selectedType === 'zone' ? zones.find(z => z.id === selectedCleanId) : null;
+  const selectedRoad = selectedType === 'road' ? roads.find(r => r.id === selectedCleanId) : null;
+  const selectedLabel = selectedType === 'label' ? labels.find(l => l.id === selectedCleanId) : null;
+  const selectedAmenity = selectedType === 'amenity' ? amenities.find(a => a.id === selectedCleanId) : null;
 
   // Land statistics calculation
   const stats = useMemo(() => {
@@ -184,7 +225,7 @@ export default function PropertiesPanel() {
         activePlacementVariant: variant,
         activePlacementFootprint: defaultFootprint
       });
-      setActiveTool('SELECT');
+      setActiveTool('ADD_AMENITY');
       setSelectedElementId(null);
     }
   };
@@ -246,11 +287,11 @@ export default function PropertiesPanel() {
   ];
 
   const handleZoneChange = (key, value) => {
-    updateZone(selectedElementId, { [key]: value });
+    updateZone(selectedCleanId, { [key]: value });
   };
 
   const handleZoneNestedChange = (key, value) => {
-    updateZone(selectedElementId, {
+    updateZone(selectedCleanId, {
       properties: {
         ...selectedZone.properties,
         [key]: value
@@ -259,11 +300,54 @@ export default function PropertiesPanel() {
   };
 
   const handleRoadChange = (key, value) => {
-    updateRoad(selectedElementId, { [key]: value });
+    updateRoad(selectedCleanId, { [key]: value });
   };
 
   const handleAmenityChange = (key, value) => {
-    updateAmenity(selectedElementId, { [key]: value });
+    updateAmenity(selectedCleanId, { [key]: value });
+  };
+
+  const updateZoneDimensions = (newW_m, newH_m) => {
+    const scaleLocal = meta.scale_px_per_m || 2.4;
+    const newW_px = newW_m * scaleLocal;
+    const newH_px = newH_m * scaleLocal;
+    const x = selectedZone.x_px;
+    const y = selectedZone.y_px;
+    const rot = selectedZone.rotation_deg || 0;
+    
+    const updatedPointsPx = getRotatedPoints(x, y, newW_px, newH_px, rot);
+    const updatedPointsM = updatedPointsPx.map(p => [p[0] / scaleLocal, p[1] / scaleLocal]);
+    
+    updateZone(selectedZone.id, {
+      width_px: newW_px,
+      height_px: newH_px,
+      width_m: newW_m,
+      height_m: newH_m,
+      points_px: updatedPointsPx,
+      points_m: updatedPointsM,
+      'properties.plot_size_sqm': newW_m * newH_m
+    });
+  };
+
+  const updateAmenityDimensions = (newW_m, newH_m) => {
+    const scaleLocal = meta.scale_px_per_m || 2.4;
+    const newW_px = newW_m * scaleLocal;
+    const newH_px = newH_m * scaleLocal;
+    const x = selectedAmenity.x_px;
+    const y = selectedAmenity.y_px;
+    const rot = selectedAmenity.rotation_deg || 0;
+    
+    const updatedPointsPx = getRotatedPoints(x, y, newW_px, newH_px, rot);
+    const updatedPointsM = updatedPointsPx.map(p => [p[0] / scaleLocal, p[1] / scaleLocal]);
+    
+    updateAmenity(selectedAmenity.id, {
+      width_px: newW_px,
+      height_px: newH_px,
+      width_m: newW_m,
+      height_m: newH_m,
+      points_px: updatedPointsPx,
+      points_m: updatedPointsM
+    });
   };
 
   const getZonePolygonArea = (zone) => {
@@ -326,9 +410,10 @@ export default function PropertiesPanel() {
     </div>
   );
 
-  const SectionHeader = ({ title }) => (
-    <div className="flex items-center gap-1.5 pb-1 border-b border-slate-100 mt-3 mb-2">
+  const SectionHeader = ({ title, children }) => (
+    <div className="flex items-center justify-between pb-1 border-b border-slate-100 mt-3 mb-2">
       <span className="text-[9px] font-bold tracking-widest uppercase text-slate-400">{title}</span>
+      {children}
     </div>
   );
 
@@ -402,7 +487,7 @@ export default function PropertiesPanel() {
               <div className="flex justify-between items-center">
                 <span className="font-bold text-slate-800 text-[10px] tracking-wider uppercase">Land Use Targets</span>
                 <button
-                  onClick={() => setIsModalOpen(true)}
+                  onClick={() => setLandUseModalOpen(true)}
                   className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold text-[10px]"
                 >
                   <Settings size={10} />
@@ -490,6 +575,43 @@ export default function PropertiesPanel() {
                   <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${meta.showNumberLegend ? 'left-5' : 'left-0.5'}`} />
                 </button>
               </div>
+
+              {/* Setback Toggle */}
+              <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Show Site Setback</span>
+                </div>
+                <button
+                  onClick={() => setMeta({ ...meta, showSetback: meta.showSetback === false })}
+                  className={`w-9 h-5 rounded-full relative transition-colors ${meta.showSetback !== false ? 'bg-rose-500' : 'bg-slate-300'}`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-all ${meta.showSetback !== false ? 'left-5' : 'left-0.5'}`} />
+                </button>
+              </div>
+              {meta.showSetback !== false && (
+                <div className="grid grid-cols-3 gap-1.5 px-1">
+                  {[
+                    { label: 'Front', key: 'front_setback_m', val: meta.front_setback_m ?? 6 },
+                    { label: 'Side', key: 'side_setback_m', val: meta.side_setback_m ?? 6 },
+                    { label: 'Rear', key: 'rear_setback_m', val: meta.rear_setback_m ?? 6 },
+                  ].map(({ label, key, val }) => (
+                    <div key={label} className="flex flex-col items-center bg-rose-50 border border-rose-200 rounded-lg py-1.5 px-1">
+                      <span className="text-[8px] font-bold uppercase tracking-wider text-rose-500 mb-1">{label}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={val}
+                        onChange={(e) => {
+                          const newVal = parseFloat(e.target.value) || 0;
+                          setMeta({ ...meta, [key]: newVal });
+                        }}
+                        className="w-12 bg-transparent text-[12px] font-black text-rose-700 text-center focus:ring-0 focus:outline-none border-b border-rose-300"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -1178,10 +1300,215 @@ export default function PropertiesPanel() {
                     </div>
                   </FieldRow>
 
-                  <SectionHeader title="📐 All Dimensions" />
+                  <SectionHeader title="📐 All Dimensions">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setMeta({ ...meta, showBlockDimensions: meta.showBlockDimensions === false ? true : false })}
+                        className={`transition-colors p-0.5 rounded flex items-center gap-0.5 text-[9px] font-semibold ${
+                          meta.showBlockDimensions === false
+                            ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                            : 'text-indigo-600 bg-indigo-50'
+                        }`}
+                        title={meta.showBlockDimensions === false ? 'Show side dimensions on canvas' : 'Hide side dimensions on canvas'}
+                      >
+                        {meta.showBlockDimensions === false ? <EyeOff size={11} /> : <Eye size={11} />}
+                        <span>{meta.showBlockDimensions === false ? 'Off' : 'On'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowBlueprintPreview(!showBlueprintPreview)}
+                        className={`transition-colors p-0.5 rounded ${showBlueprintPreview ? 'text-indigo-655 bg-indigo-50/60' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        title="Toggle Dimension Blueprint"
+                      >
+                        <Info size={11} />
+                      </button>
+                    </div>
+                  </SectionHeader>
+                  
+                  {showBlueprintPreview && (
+                    <div className="mt-1 mb-2.5 p-2 bg-white rounded-xl border border-slate-200 shadow-sm animate-in fade-in duration-200">
+                      <div className="relative w-full h-[150px] rounded-lg overflow-hidden flex items-center justify-center border border-slate-100 shadow-inner"
+                           style={{ 
+                             backgroundColor: '#7fa475', 
+                             backgroundImage: 'radial-gradient(rgba(255,255,255,0.12) 1.2px, transparent 1.2px)', 
+                             backgroundSize: '12px 12px' 
+                           }}>
+                        <svg className="w-full h-full" viewBox="0 0 280 150" xmlns="http://www.w3.org/2000/svg">
+                          <defs>
+                            <pattern id="blueprint-grid-zone" width="10" height="10" patternUnits="userSpaceOnUse">
+                              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
+                            </pattern>
+                          </defs>
+                          <rect width="100%" height="100%" fill="url(#blueprint-grid-zone)" />
+
+                          {(() => {
+                            const maxDim = Math.max(bboxW, bboxH) || 1;
+                            const svgScale = 85 / maxDim;
+                            const drawW = bboxW * svgScale;
+                            const drawH = bboxH * svgScale;
+                            const blockX = 140 - drawW / 2;
+                            const blockY = 75 - drawH / 2;
+                            const color = selectedZone.color || '#95A5A6';
+                            const footprint = selectedZone.footprint || 'rectangle';
+
+                            const cx = 140;
+                            const cy = 75;
+                            const x0 = blockX, x1 = blockX + drawW;
+                            const y0 = blockY, y1 = blockY + drawH;
+
+                            return (
+                              <>
+                                {/* Corner Fillers for Cruciform */}
+                                {footprint === 'cruciform' && (() => {
+                                  const isRes = ['residential', 'mixed_use', 'amenity'].includes(selectedZone.type) || selectedZone.label?.toLowerCase().includes('club');
+                                  const tW = drawW / 3;
+                                  const tH = drawH / 3;
+                                  if (isRes) {
+                                    return (
+                                      <>
+                                        {/* Top-Left: Deck and pool */}
+                                        <rect x={x0} y={y0} width={tW} height={tH} fill="#d7ccc8" stroke="#a1887f" strokeWidth="0.5" />
+                                        <rect x={x0 + tW/4} y={y0 + tH/4} width={tW/2} height={tH/2} fill="#81d4fa" stroke="#29b6f6" strokeWidth="0.5" rx="1" />
+                                        {/* Bottom-Right: garden and tree */}
+                                        <rect x={x0 + 2*tW} y={y0 + 2*tH} width={tW} height={tH} fill="#c8e6c9" stroke="#81c784" strokeWidth="0.5" />
+                                        <circle cx={x0 + 2*tW + tW/2} cy={y0 + 2*tH + tH/2} r={tH/5} fill="#2e7d32" />
+                                        {/* Top-Right: garden */}
+                                        <rect x={x0 + 2*tW} y={y0} width={tW} height={tH} fill="#e8f5e9" stroke="#c8e6c9" strokeWidth="0.5" />
+                                        <circle cx={x0 + 2*tW + tW/3} cy={y0 + tH/3} r={tH/6} fill="#388e3c" />
+                                        {/* Bottom-Left: deck and tree */}
+                                        <rect x={x0} y={y0 + 2*tH} width={tW} height={tH} fill="#efebe9" stroke="#d7ccc8" strokeWidth="0.5" />
+                                        <circle cx={x0 + tW/3} cy={y0 + 2*tH + tH/3} r={tH/6} fill="#4caf50" />
+                                      </>
+                                    );
+                                  } else {
+                                    return (
+                                      <>
+                                        {/* Parking stripes in corners */}
+                                        {[[x0, y0], [x0 + 2*tW, y0], [x0, y0 + 2*tH], [x0 + 2*tW, y0 + 2*tH]].map(([px, py], cIdx) => (
+                                          <g key={cIdx}>
+                                            <rect x={px} y={py} width={tW} height={tH} fill="#cfd8dc" stroke="#b0bec5" strokeWidth="0.5" />
+                                            {Array.from({ length: 3 }).map((_, lIdx) => (
+                                              <line key={lIdx} x1={px + (tW/3)*lIdx + 2} y1={py + 2} x2={px + (tW/3)*lIdx + 2} y2={py + tH - 2} stroke="#ffffff" strokeWidth="0.8" />
+                                            ))}
+                                          </g>
+                                        ))}
+                                      </>
+                                    );
+                                  }
+                                })()}
+
+                                {/* Footprint Building Base */}
+                                {footprint === 'cruciform' ? (
+                                  <path d={`M ${x0+drawW/3} ${y0} L ${x0+2*drawW/3} ${y0} L ${x0+2*drawW/3} ${y0+drawH/3} L ${x1} ${y0+drawH/3} L ${x1} ${y0+2*drawH/3} L ${x0+2*drawW/3} ${y0+2*drawH/3} L ${x0+2*drawW/3} ${y1} L ${x0+drawW/3} ${y1} L ${x0+drawW/3} ${y0+2*drawH/3} L ${x0} ${y0+2*drawH/3} L ${x0} ${y0+drawH/3} L ${x0+drawW/3} ${y0+drawH/3} Z`} fill={color} stroke="#0f172a" strokeWidth="1.2" />
+                                ) : footprint === 'h_shaped' ? (
+                                  <path d={`M ${x0} ${y0} L ${x0+drawW/3} ${y0} L ${x0+drawW/3} ${y0+drawH/3} L ${x0+2*drawW/3} ${y0+drawH/3} L ${x0+2*drawW/3} ${y0} L ${x1} ${y0} L ${x1} ${y1} L ${x0+2*drawW/3} ${y1} L ${x0+2*drawW/3} ${y0+2*drawH/3} L ${x0+drawW/3} ${y0+2*drawH/3} L ${x0+drawW/3} ${y1} L ${x0} ${y1} Z`} fill={color} stroke="#0f172a" strokeWidth="1.2" />
+                                ) : footprint === 'u_shaped' ? (
+                                  <path d={`M ${x0} ${y0} L ${x1} ${y0} L ${x1} ${y1} L ${x0+2*drawW/3} ${y1} L ${x0+2*drawW/3} ${y0+drawH/3} L ${x0+drawW/3} ${y0+drawH/3} L ${x0+drawW/3} ${y1} L ${x0} ${y1} Z`} fill={color} stroke="#0f172a" strokeWidth="1.2" />
+                                ) : footprint === 'courtyard' ? (
+                                  <path d={`M ${x0} ${y0} L ${x1} ${y0} L ${x1} ${y1} L ${x0} ${y1} Z M ${x0+drawW/4} ${y0+drawH/4} L ${x0+drawW/4} ${y1-drawH/4} L ${x1-drawW/4} ${y1-drawH/4} L ${x1-drawW/4} ${y0+drawH/4} Z`} fillRule="evenodd" fill={color} stroke="#0f172a" strokeWidth="1.2" />
+                                ) : (
+                                  <rect x={x0} y={y0} width={drawW} height={drawH} fill={color} stroke="#0f172a" strokeWidth="1.2" />
+                                )}
+
+                                {/* Gable / Hip Roof ridge & hip visual overlay */}
+                                {drawW >= drawH ? (
+                                  <>
+                                    <line x1={x0 + drawH/4} y1={cy} x2={x1 - drawH/4} y2={cy} stroke="rgba(15,23,42,0.45)" strokeWidth="1.2" />
+                                    <path d={`M ${x0} ${y0} L ${x0+drawH/4} ${cy} M ${x0} ${y1} L ${x0+drawH/4} ${cy} M ${x1} ${y0} L ${x1-drawH/4} ${cy} M ${x1} ${y1} L ${x1-drawH/4} ${cy}`} stroke="rgba(15,23,42,0.3)" strokeWidth="1" />
+                                    <polygon points={`${x0} ${y1} ${x1} ${y1} ${x1-drawH/4} ${cy} ${x0+drawH/4} ${cy}`} fill="rgba(0,0,0,0.06)" />
+                                  </>
+                                ) : (
+                                  <>
+                                    <line x1={cx} y1={y0 + drawW/4} x2={cx} y2={y1 - drawW/4} stroke="rgba(15,23,42,0.45)" strokeWidth="1.2" />
+                                    <path d={`M ${x0} ${y0} L ${cx} ${y0+drawW/4} M ${x1} ${y0} L ${cx} ${y0+drawW/4} M ${x0} ${y1} L ${cx} ${y1-drawW/4} M ${x1} ${y1} L ${cx} ${y1-drawW/4}`} stroke="rgba(15,23,42,0.3)" strokeWidth="1" />
+                                    <polygon points={`${x1} ${y0} ${x1} ${y1} ${cx} ${y1-drawW/4} ${cx} ${y0+drawW/4}`} fill="rgba(0,0,0,0.06)" />
+                                  </>
+                                )}
+
+                                {/* TOP SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x0} y1={y0 - 10} x2={x1} y2={y0 - 10} />
+                                  <line x1={x0} y1={y0 - 13} x2={x0} y2={y0 - 7} />
+                                  <line x1={x1} y1={y0 - 13} x2={x1} y2={y0 - 7} />
+                                  <text x={cx} y={y0 - 15} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif">
+                                    {bboxW.toFixed(1)} m
+                                  </text>
+                                </g>
+
+                                {/* BOTTOM SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x0} y1={y1 + 10} x2={x1} y2={y1 + 10} />
+                                  <line x1={x0} y1={y1 + 7} x2={x0} y2={y1 + 13} />
+                                  <line x1={x1} y1={y1 + 7} x2={x1} y2={y1 + 13} />
+                                  <text x={cx} y={y1 + 18} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif">
+                                    {bboxW.toFixed(1)} m
+                                  </text>
+                                </g>
+
+                                {/* LEFT SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x0 - 10} y1={y0} x2={x0 - 10} y2={y1} />
+                                  <line x1={x0 - 13} y1={y0} x2={x0 - 7} y2={y0} />
+                                  <line x1={x0 - 13} y1={y1} x2={x0 - 7} y2={y1} />
+                                  <text x={x0 - 15} y={cy + 3} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif" transform={`rotate(-90, ${x0 - 15}, ${cy})`}>
+                                    {bboxH.toFixed(1)} m
+                                  </text>
+                                </g>
+
+                                {/* RIGHT SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x1 + 10} y1={y0} x2={x1 + 10} y2={y1} />
+                                  <line x1={x1 + 7} y1={y0} x2={x1 + 13} y2={y0} />
+                                  <line x1={x1 + 7} y1={y1} x2={x1 + 13} y2={y1} />
+                                  <text x={x1 + 17} y={cy + 3} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif" transform={`rotate(90, ${x1 + 17}, ${cy})`}>
+                                    {bboxH.toFixed(1)} m
+                                  </text>
+                                </g>
+                              </>
+                            );
+                          })()}
+                        </svg>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-1.5">
-                    <StatBox label="Length (bbox)" value={bboxW.toFixed(1)} unit="m" />
-                    <StatBox label="Breadth (bbox)" value={bboxH.toFixed(1)} unit="m" />
+                    <div className="p-2 rounded-lg border bg-slate-50 border-slate-100 flex flex-col gap-0.5">
+                      <span className="text-[8px] font-bold tracking-wider uppercase text-slate-400">Length (m)</span>
+                      <div className="flex items-baseline gap-0.5">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          value={parseFloat((selectedZone.width_m || bboxW).toFixed(1))}
+                          onChange={(e) => {
+                            const newW = parseFloat(e.target.value) || 0;
+                            if (newW > 0) {
+                              updateZoneDimensions(newW, selectedZone.height_m || bboxH);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs font-black text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg border bg-slate-50 border-slate-100 flex flex-col gap-0.5">
+                      <span className="text-[8px] font-bold tracking-wider uppercase text-slate-400">Breadth (m)</span>
+                      <div className="flex items-baseline gap-0.5">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          value={parseFloat((selectedZone.height_m || bboxH).toFixed(1))}
+                          onChange={(e) => {
+                            const newH = parseFloat(e.target.value) || 0;
+                            if (newH > 0) {
+                              updateZoneDimensions(selectedZone.width_m || bboxW, newH);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs font-black text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
                     <StatBox label="Polygon Area" value={areaSqm >= 10000 ? (areaSqm/10000).toFixed(3)+' ha' : Math.round(areaSqm).toLocaleString()} unit={areaSqm >= 10000 ? '' : 'm²'} accent />
                     <StatBox label="Perimeter" value={perimM.toFixed(1)} unit="m" />
                     <StatBox label="Est. Height" value={(floors * 3).toFixed(0)} unit="m" sub={`${floors} floors × 3m`} />
@@ -1566,10 +1893,166 @@ export default function PropertiesPanel() {
                     <input type="text" value={selectedAmenity.label} onChange={(e) => handleAmenityChange('label', e.target.value)} className={inputCls} />
                   </FieldRow>
 
-                  <SectionHeader title="📐 All Dimensions" />
+                  <SectionHeader title="📐 All Dimensions">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setMeta({ ...meta, showBlockDimensions: meta.showBlockDimensions === false ? true : false })}
+                        className={`transition-colors p-0.5 rounded flex items-center gap-0.5 text-[9px] font-semibold ${
+                          meta.showBlockDimensions === false
+                            ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                            : 'text-indigo-600 bg-indigo-50'
+                        }`}
+                        title={meta.showBlockDimensions === false ? 'Show side dimensions on canvas' : 'Hide side dimensions on canvas'}
+                      >
+                        {meta.showBlockDimensions === false ? <EyeOff size={11} /> : <Eye size={11} />}
+                        <span>{meta.showBlockDimensions === false ? 'Off' : 'On'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowBlueprintPreview(!showBlueprintPreview)}
+                        className={`transition-colors p-0.5 rounded ${showBlueprintPreview ? 'text-indigo-655 bg-indigo-50/60' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                        title="Toggle Dimension Blueprint"
+                      >
+                        <Info size={11} />
+                      </button>
+                    </div>
+                  </SectionHeader>
+                  
+                  {showBlueprintPreview && (
+                    <div className="mt-1 mb-2.5 p-2 bg-white rounded-xl border border-slate-200 shadow-sm animate-in fade-in duration-200">
+                      <div className="relative w-full h-[150px] rounded-lg overflow-hidden flex items-center justify-center border border-slate-100 shadow-inner"
+                           style={{ 
+                             backgroundColor: '#7fa475', 
+                             backgroundImage: 'radial-gradient(rgba(255,255,255,0.12) 1.2px, transparent 1.2px)', 
+                             backgroundSize: '12px 12px' 
+                           }}>
+                        <svg className="w-full h-full" viewBox="0 0 280 150" xmlns="http://www.w3.org/2000/svg">
+                          <defs>
+                            <pattern id="blueprint-grid-amenity" width="10" height="10" patternUnits="userSpaceOnUse">
+                              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
+                            </pattern>
+                          </defs>
+                          <rect width="100%" height="100%" fill="url(#blueprint-grid-amenity)" />
+
+                          {(() => {
+                            const aW = selectedAmenity.width_m || 0;
+                            const aH = selectedAmenity.height_m || 0;
+                            const maxDim = Math.max(aW, aH) || 1;
+                            const svgScale = 85 / maxDim;
+                            const drawW = aW * svgScale;
+                            const drawH = aH * svgScale;
+                            const blockX = 140 - drawW / 2;
+                            const blockY = 75 - drawH / 2;
+                            const isWater = selectedAmenity.type === 'water_body' || selectedAmenity.type === 'pool';
+                            const isGreen = ['lawn', 'park', 'garden', 'green', 'open_space'].includes(selectedAmenity.type);
+                            const color = isWater ? '#81d4fa' : isGreen ? '#c8e6c9' : '#b0bec5';
+
+                            const cx = 140;
+                            const cy = 75;
+                            const x0 = blockX, x1 = blockX + drawW;
+                            const y0 = blockY, y1 = blockY + drawH;
+
+                            return (
+                              <>
+                                {/* Footprint Building Base */}
+                                <rect x={x0} y={y0} width={drawW} height={drawH} fill={color} stroke="#0f172a" strokeWidth="1.2" />
+
+                                {/* Draw basic roof or water details for visual premium look */}
+                                {isWater ? (
+                                  <rect x={x0 + 3} y={y0 + 3} width={drawW - 6} height={drawH - 6} fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1" strokeDasharray="2,2" />
+                                ) : isGreen ? (
+                                  <circle cx={cx} cy={cy} r={Math.min(drawW, drawH)/3} fill="none" stroke="rgba(46,125,50,0.3)" strokeWidth="1.2" strokeDasharray="3,3" />
+                                ) : (
+                                  <>
+                                    <line x1={x0 + drawH/4} y1={cy} x2={x1 - drawH/4} y2={cy} stroke="rgba(15,23,42,0.3)" strokeWidth="1" />
+                                    <path d={`M ${x0} ${y0} L ${x0+drawH/4} ${cy} M ${x0} ${y1} L ${x0+drawH/4} ${cy} M ${x1} ${y0} L ${x1-drawH/4} ${cy} M ${x1} ${y1} L ${x1-drawH/4} ${cy}`} stroke="rgba(15,23,42,0.2)" strokeWidth="0.8" />
+                                  </>
+                                )}
+
+                                {/* TOP SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x0} y1={y0 - 10} x2={x1} y2={y0 - 10} />
+                                  <line x1={x0} y1={y0 - 13} x2={x0} y2={y0 - 7} />
+                                  <line x1={x1} y1={y0 - 13} x2={x1} y2={y0 - 7} />
+                                  <text x={cx} y={y0 - 15} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif">
+                                    {aW.toFixed(1)} m
+                                  </text>
+                                </g>
+
+                                {/* BOTTOM SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x0} y1={y1 + 10} x2={x1} y2={y1 + 10} />
+                                  <line x1={x0} y1={y1 + 7} x2={x0} y2={y1 + 13} />
+                                  <line x1={x1} y1={y1 + 7} x2={x1} y2={y1 + 13} />
+                                  <text x={cx} y={y1 + 18} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif">
+                                    {aW.toFixed(1)} m
+                                  </text>
+                                </g>
+
+                                {/* LEFT SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x0 - 10} y1={y0} x2={x0 - 10} y2={y1} />
+                                  <line x1={x0 - 13} y1={y0} x2={x0 - 7} y2={y0} />
+                                  <line x1={x0 - 13} y1={y1} x2={x0 - 7} y2={y1} />
+                                  <text x={x0 - 15} y={cy + 3} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif" transform={`rotate(-90, ${x0 - 15}, ${cy})`}>
+                                    {aH.toFixed(1)} m
+                                  </text>
+                                </g>
+
+                                {/* RIGHT SCALE LINE */}
+                                <g stroke="#0f172a" strokeWidth="0.8" fill="#0f172a">
+                                  <line x1={x1 + 10} y1={y0} x2={x1 + 10} y2={y1} />
+                                  <line x1={x1 + 7} y1={y0} x2={x1 + 13} y2={y0} />
+                                  <line x1={x1 + 7} y1={y1} x2={x1 + 13} y2={y1} />
+                                  <text x={x1 + 17} y={cy + 3} stroke="none" textAnchor="middle" fontSize="8" fontWeight="bold" fontFamily="sans-serif" transform={`rotate(90, ${x1 + 17}, ${cy})`}>
+                                    {aH.toFixed(1)} m
+                                  </text>
+                                </g>
+                              </>
+                            );
+                          })()}
+                        </svg>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-1.5">
-                    <StatBox label="Width (Breadth)" value={(selectedAmenity.width_m || 0).toFixed(1)} unit="m" />
-                    <StatBox label="Height (Length)" value={(selectedAmenity.height_m || 0).toFixed(1)} unit="m" />
+                    <div className="p-2 rounded-lg border bg-slate-50 border-slate-100 flex flex-col gap-0.5">
+                      <span className="text-[8px] font-bold tracking-wider uppercase text-slate-400">Width (m)</span>
+                      <div className="flex items-baseline gap-0.5">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          value={parseFloat((selectedAmenity.width_m || 0).toFixed(1))}
+                          onChange={(e) => {
+                            const newW = parseFloat(e.target.value) || 0;
+                            if (newW > 0) {
+                              updateAmenityDimensions(newW, selectedAmenity.height_m || 0);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs font-black text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="p-2 rounded-lg border bg-slate-50 border-slate-100 flex flex-col gap-0.5">
+                      <span className="text-[8px] font-bold tracking-wider uppercase text-slate-400">Height (m)</span>
+                      <div className="flex items-baseline gap-0.5">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          value={parseFloat((selectedAmenity.height_m || 0).toFixed(1))}
+                          onChange={(e) => {
+                            const newH = parseFloat(e.target.value) || 0;
+                            if (newH > 0) {
+                              updateAmenityDimensions(selectedAmenity.width_m || 0, newH);
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs font-black text-slate-800 focus:outline-none"
+                        />
+                      </div>
+                    </div>
                     <StatBox label="Area" value={areaSqm >= 10000 ? (areaSqm/10000).toFixed(3) : Math.round(areaSqm).toLocaleString()} unit={areaSqm >= 10000 ? 'ha' : 'm²'} accent />
                     <StatBox label="Perimeter" value={perimM.toFixed(1)} unit="m" />
                     <StatBox label="Diagonal" value={Math.sqrt((selectedAmenity.width_m||0)**2+(selectedAmenity.height_m||0)**2).toFixed(1)} unit="m" />
@@ -1631,8 +2114,8 @@ export default function PropertiesPanel() {
         )}
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in p-4">
+      {landUseModalOpen && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center animate-fade-in p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-[400px] border border-slate-100 flex flex-col gap-4">
             <div>
               <h3 className="text-sm font-bold text-slate-800 tracking-wide">Target Land Use Allocation</h3>
@@ -1674,12 +2157,51 @@ export default function PropertiesPanel() {
               })}
             </div>
 
+            <div className="border-t border-slate-100 pt-3">
+              <h4 className="text-xs font-bold text-slate-800 tracking-wide mb-2">Boundary Setbacks (m)</h4>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-xs font-semibold text-slate-750">Front Setback (m)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={tempFrontSetback}
+                    onChange={(e) => setTempFrontSetback(parseFloat(e.target.value) || 0)}
+                    className="w-16 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-slate-800 text-xs font-bold text-center"
+                  />
+                </div>
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-xs font-semibold text-slate-750">Rear Setback (m)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={tempRearSetback}
+                    onChange={(e) => setTempRearSetback(parseFloat(e.target.value) || 0)}
+                    className="w-16 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-slate-800 text-xs font-bold text-center"
+                  />
+                </div>
+                <div className="flex justify-between items-center gap-4">
+                  <span className="text-xs font-semibold text-slate-750">Side Setback (m)</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={tempSideSetback}
+                    onChange={(e) => setTempSideSetback(parseFloat(e.target.value) || 0)}
+                    className="w-16 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-slate-800 text-xs font-bold text-center"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-between items-center border-t border-slate-100 pt-4 mt-2">
               <span className="text-xs font-bold">
                 Total: <span className={tempTotal === 100 ? 'text-emerald-600' : 'text-rose-500'}>{tempTotal}%</span>
               </span>
               <div className="flex gap-2">
-                <Button onClick={() => setIsModalOpen(false)} variant="secondary" className="py-1 px-3 text-xs">
+                <Button onClick={() => setLandUseModalOpen(false)} variant="secondary" className="py-1 px-3 text-xs">
                   Cancel
                 </Button>
                 <Button
@@ -1688,8 +2210,13 @@ export default function PropertiesPanel() {
                       alert("Total percentage must equal exactly 100%!");
                       return;
                     }
-                    setMeta({ land_allocation: tempTargets });
-                    setIsModalOpen(false);
+                    setMeta({
+                      land_allocation: tempTargets,
+                      front_setback_m: tempFrontSetback,
+                      rear_setback_m: tempRearSetback,
+                      side_setback_m: tempSideSetback
+                    });
+                    setLandUseModalOpen(false);
                   }}
                   variant="primary"
                   className="py-1 px-3 text-xs font-bold"
@@ -1699,7 +2226,8 @@ export default function PropertiesPanel() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Boundary Generator Modal */}
       <BoundaryGeneratorModal 

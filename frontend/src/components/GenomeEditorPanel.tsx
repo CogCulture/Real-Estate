@@ -1,5 +1,4 @@
 import React from 'react';
-import { DesignGenome } from '../../../shared/types';
 import { useSessionStore } from '../store/session';
 
 export const GenomeEditorPanel: React.FC = () => {

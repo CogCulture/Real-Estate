@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Pointer, 
   Square, 
@@ -15,6 +16,7 @@ import {
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useParams } from 'react-router-dom';
 import { generateSuggestedLayout } from '../../utils/planningEngine';
+import toast from 'react-hot-toast';
 
 export default function Toolbar({ viewMode, setViewMode }) {
   const { projectId } = useParams();
@@ -36,22 +38,11 @@ export default function Toolbar({ viewMode, setViewMode }) {
   } = useLayoutStore();
 
   const [isGenerating, setIsGenerating] = React.useState(false);
+  const [showConfirmModal, setShowConfirmModal] = React.useState(false);
+  const [showClearModal, setShowClearModal] = React.useState(false);
 
-  const handleSuggestLayout = async () => {
-    if (confirm("Are you sure you want to replace current design with an AI-generated luxury masterplan? This will overwrite your current changes.")) {
-      setIsGenerating(true);
-      try {
-        const suggested = await generateSuggestedLayout(meta.site_width_m, meta.site_height_m, projectId, {
-          boundary_geojson: meta.boundary_geojson || null
-        });
-        setLayout(suggested);
-      } catch (err) {
-        console.error("Failed to generate layout:", err);
-        alert("Failed to generate layout. See console for details.");
-      } finally {
-        setIsGenerating(false);
-      }
-    }
+  const handleSuggestLayout = () => {
+    setShowConfirmModal(true);
   };
 
   const tools = [
@@ -246,7 +237,7 @@ export default function Toolbar({ viewMode, setViewMode }) {
 
         <div className="grid grid-cols-2 gap-1.5 mt-2">
           <button
-            onClick={undo}
+            onClick={() => undo()}
             className="flex items-center justify-center gap-1.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold transition-all border border-slate-200"
             title="Undo (Ctrl+Z)"
           >
@@ -254,7 +245,7 @@ export default function Toolbar({ viewMode, setViewMode }) {
             Undo
           </button>
           <button
-            onClick={redo}
+            onClick={() => redo()}
             className="flex items-center justify-center gap-1.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold transition-all border border-slate-200"
             title="Redo (Ctrl+Y)"
           >
@@ -274,11 +265,7 @@ export default function Toolbar({ viewMode, setViewMode }) {
         </button>
 
         <button
-          onClick={() => {
-            if (confirm("Are you sure you want to clear the entire site layout?")) {
-              resetLayout();
-            }
-          }}
+          onClick={() => setShowClearModal(true)}
           className="flex items-center justify-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-md border border-rose-200 transition-all text-left mt-2"
           title="Clear Layout"
         >
@@ -286,6 +273,143 @@ export default function Toolbar({ viewMode, setViewMode }) {
           <span>Clear Layout</span>
         </button>
       </div>
+
+      {/* AI Suggest Layout Confirmation Modal */}
+      {showConfirmModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden transform transition-all scale-100 duration-300">
+            <div className="bg-slate-900 p-5 text-white flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-lg">
+                <Sparkles size={20} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Generate AI Layout</h3>
+                <p className="text-[11px] text-slate-400">Township Planner AI engine</p>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm font-semibold text-slate-800 mb-2">
+                Replace current design with an AI-generated luxury masterplan?
+              </p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This action will analyze your site geometry and requirements to generate a complete township layout. <strong className="text-slate-700">Any manually placed blocks or changes will be overwritten.</strong>
+              </p>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-850 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowConfirmModal(false);
+                  setIsGenerating(true);
+                  try {
+                    const suggested = await generateSuggestedLayout(meta.site_width_m, meta.site_height_m, projectId, {
+                      boundary_geojson: meta.boundary_geojson || null,
+                      scale: meta.scale_px_per_m || 2.4,
+                      land_offset_x_m: meta.land_offset_x_m || 0,
+                      land_offset_y_m: meta.land_offset_y_m || 0,
+                      north_angle_deg: meta.north_angle_deg || 0,
+                      showNumberLegend: meta.showNumberLegend !== false,
+                      showSetback: meta.showSetback !== false
+                    });
+                    setLayout(suggested);
+                    toast.success("AI Layout generated successfully!");
+                  } catch (err) {
+                    console.error("Failed to generate layout:", err);
+                    toast.error("Failed to generate AI layout. Check console for details.");
+                  } finally {
+                    setIsGenerating(false);
+                  }
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles size={14} />
+                Generate Layout
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Clear Layout Confirmation Modal */}
+      {showClearModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden transform transition-all scale-100 duration-300">
+            <div className="bg-black p-5 text-white flex items-center gap-3">
+              <div className="p-2 bg-white/10 text-white rounded-lg">
+                <Trash2 size={20} className="animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Clear Site Layout</h3>
+                <p className="text-[11px] text-slate-400">Reset layout design space</p>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm font-semibold text-slate-800 mb-2">
+                Are you sure you want to clear the entire site layout?
+              </p>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                This will delete all placed roads, zones, residential towers, and amenities from the workspace. <strong className="text-rose-600">This action cannot be undone.</strong>
+              </p>
+            </div>
+
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowClearModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-650 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowClearModal(false);
+                  resetLayout();
+                  toast.success("Site layout cleared.");
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 size={14} />
+                Clear Design
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Full-Screen AI Generation Loading Spinner Overlay */}
+      {isGenerating && createPortal(
+        <div className="fixed inset-0 z-[100000] flex flex-col items-center justify-center bg-slate-900/25 backdrop-blur-sm select-none pointer-events-auto">
+          <div className="flex flex-col items-center max-w-sm text-center p-6">
+            <div className="relative w-20 h-20 mb-6 flex items-center justify-center">
+              <div className="absolute inset-0 border-4 border-slate-800 border-t-indigo-500 rounded-full animate-spin"></div>
+              <div className="w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-400 animate-pulse">
+                <Sparkles size={24} className="animate-spin [animation-duration:8s]" />
+              </div>
+            </div>
+            
+            <h3 className="text-lg font-bold text-white tracking-wide mb-2 animate-pulse">
+              Generating AI Layout...
+            </h3>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Analyzing topography, zoning rules, and boundaries to build your custom township plan. This may take a moment.
+            </p>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

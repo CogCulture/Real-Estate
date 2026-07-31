@@ -68,7 +68,7 @@ export default function Preview3D() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={() => navigate('/')} variant="secondary" className="text-xs py-1.5 px-3">
+          <Button onClick={() => navigate('/projects')} variant="secondary" className="text-xs py-1.5 px-3">
             <ArrowLeft size={14} />
             Back to Dashboard
           </Button>

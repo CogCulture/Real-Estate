@@ -1,5 +1,5 @@
 import RBush from 'rbush';
-import { RenderPrimitive, RenderPolygon, RenderCircle, RenderText } from '../types';
+import type { RenderPrimitive, RenderPolygon, RenderCircle, RenderText } from '../types';
 
 export interface SceneNode {
   id: string;

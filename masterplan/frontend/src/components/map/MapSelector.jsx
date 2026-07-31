@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { calculateAreaFromLatLng, getBoundingBoxMeters, rotateLatLngs } from '../../utils/geoUtils';
 import Button from '../ui/Button';
 import { Maximize2, Minimize2 } from 'lucide-react';
+import LocationSearch from './LocationSearch';
 
 // Fix Leaflet marker path issue
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -29,6 +30,7 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
   const [mapStep, setMapStep] = useState('draw'); // draw | finalize
   const [siteName, setSiteName] = useState('');
   const [siteDesc, setSiteDesc] = useState('');
+  const [localSearchCenter, setLocalSearchCenter] = useState(null);
 
   // Ctrl+Z: undo last boundary dot
   useEffect(() => {
@@ -115,9 +117,17 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
   const polygonInstanceRef = useRef(null);
   const markersRef = useRef([]);
 
+  const getActiveStreetBasemap = () => {
+    return localStorage.getItem('active_basemap_street') || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+  };
+
+  const getActiveSatelliteBasemap = () => {
+    return localStorage.getItem('active_basemap_satellite') || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+  };
+
   const tileLayers = {
-    street: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    street: getActiveStreetBasemap(),
+    satellite: getActiveSatelliteBasemap()
   };
 
   // Map Initialization
@@ -177,10 +187,11 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
 
   // Center update when search results fly
   useEffect(() => {
-    if (searchCenter && mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo([searchCenter.lat, searchCenter.lng], 17);
+    const center = localSearchCenter || searchCenter;
+    if (center && mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([center.lat, center.lng], 17);
     }
-  }, [searchCenter]);
+  }, [searchCenter, localSearchCenter]);
 
   // Sync Points and Rotation to Map Vector Layers
   useEffect(() => {
@@ -207,84 +218,70 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
     // 2. Draw Polyline or Closed Polygon
     if (activePoints.length >= 3) {
       polygonInstanceRef.current = L.polygon(activePoints, {
-        color: '#4f46e5',
+        color: '#3b82f6',
         weight: 3,
         opacity: 0.9,
-        fillColor: '#4f46e5',
-        fillOpacity: 0.15
+        fillColor: '#93c5fd',
+        fillOpacity: 0.35
       }).addTo(map);
     } else if (activePoints.length >= 2) {
       polylineInstanceRef.current = L.polyline(activePoints, {
-        color: '#4f46e5',
+        color: '#3b82f6',
         weight: 3,
         opacity: 0.9
       }).addTo(map);
     }
 
-    // 3. Draw draggable corner handles (dots)
-    const dotIcon = L.divIcon({
-      className: 'custom-boundary-dot',
-      html: `<div style="
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        background: #4f46e5;
-        border: 2px solid #ffffff;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.35);
-        cursor: grab;
-      "></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-
-    activePoints.forEach((pt, idx) => {
-      const marker = L.marker(pt, {
-        icon: dotIcon,
-        draggable: true,
-        title: "Drag to reposition. Right-click to remove."
-      }).addTo(map);
-
-      // Prevent map click trigger when clicking the dot marker
-      marker.on('click', (e) => {
-        L.DomEvent.stopPropagation(e);
+    // 3. Draw draggable corner handles (dots) only during draw step
+    if (mapStep === 'draw') {
+      const dotIcon = L.divIcon({
+        className: 'custom-boundary-dot',
+        html: `<div style="
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: #3b82f6;
+          border: 2px solid #ffffff;
+          box-shadow: 0 2px 5px rgba(0,0,0,0.35);
+          cursor: grab;
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
       });
 
-      // Handle dragging
-      marker.on('drag', (e) => {
-        const newLatLng = e.target.getLatLng();
-        const currentActive = [...activePoints];
-        currentActive[idx] = newLatLng;
-        
-        if (polygonInstanceRef.current) polygonInstanceRef.current.setLatLngs(currentActive);
-        if (polylineInstanceRef.current) polylineInstanceRef.current.setLatLngs(currentActive);
-      });
+      activePoints.forEach((pt, idx) => {
+        const marker = L.marker(pt, {
+          icon: dotIcon,
+          draggable: true,
+          title: "Drag to reposition. Right-click to remove."
+        }).addTo(map);
 
-      marker.on('dragend', (e) => {
-        const newLatLng = e.target.getLatLng();
-        let unrotatedLatLng = newLatLng;
+        marker.on('dragend', (e) => {
+          const newLatLng = e.target.getLatLng();
+          let unrotatedLatLng = newLatLng;
 
-        if (rotationAngle !== 0) {
-          const rotatedArray = [...activePoints];
-          rotatedArray[idx] = newLatLng;
-          const baseUnrotated = rotateLatLngs(rotatedArray, -rotationAngle);
-          unrotatedLatLng = baseUnrotated[idx];
-        }
+          if (rotationAngle !== 0) {
+            const rotatedArray = activePoints.map((p, i) => i === idx ? newLatLng : p);
+            const baseUnrotated = rotateLatLngs(rotatedArray, -rotationAngle);
+            unrotatedLatLng = baseUnrotated[idx];
+          }
 
-        setPoints(prev => {
-          const next = [...prev];
-          next[idx] = unrotatedLatLng;
-          return next;
+          setPoints(prev => {
+            const next = [...prev];
+            next[idx] = unrotatedLatLng;
+            return next;
+          });
         });
-      });
 
-      // Right click to delete a dot
-      marker.on('contextmenu', (e) => {
-        L.DomEvent.stopPropagation(e);
-        setPoints(prev => prev.filter((_, i) => i !== idx));
-      });
+        // Right click to delete a dot
+        marker.on('contextmenu', (e) => {
+          L.DomEvent.stopPropagation(e);
+          setPoints(prev => prev.filter((_, i) => i !== idx));
+        });
 
-      markersRef.current.push(marker);
-    });
+        markersRef.current.push(marker);
+      });
+    }
 
     // 4. Calculate Area and BBox Dimensions
     if (activePoints.length >= 3) {
@@ -310,10 +307,19 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
         lng: activePoints[0].lng,
         north_angle_deg: rotationAngle
       });
+
+      if (mapStep === 'finalize') {
+        try {
+          const bounds = L.polygon(activePoints).getBounds();
+          map.fitBounds(bounds, { padding: [50, 50] });
+        } catch (err) {
+          console.error("Error fitting map bounds in finalize step:", err);
+        }
+      }
     } else {
       setSiteDetails(null);
     }
-  }, [points, rotationAngle]);
+  }, [points, rotationAngle, mapStep]);
 
   // Toggle map view
   const toggleMapMode = () => {
@@ -429,7 +435,7 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
               </div>
             </div>
 
-            <div className="flex gap-2 mt-2 border-t border-slate-100 pt-4">
+            <div className="flex gap-2 mt-2 border-t border-slate-100 pt-4 flex-wrap">
               <Button 
                 onClick={() => setMapStep('draw')} 
                 variant="secondary" 
@@ -437,24 +443,68 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
               >
                 ← Back
               </Button>
-              <Button 
-                onClick={() => {
-                  if (!siteName.trim()) {
-                    alert("Please enter a site name");
-                    return;
-                  }
-                  onSelectBoundary({
-                    ...siteDetails,
-                    name: siteName,
-                    description: siteDesc,
-                    north_angle_deg: rotationAngle
-                  });
-                }} 
-                variant="success" 
-                className="flex-[1.5] py-1.5 text-xs flex justify-center items-center gap-1.5 shadow-sm"
-              >
-                Confirm Site ✨
-              </Button>
+              {initialProject ? (
+                <Button 
+                  onClick={() => {
+                    if (!siteName.trim()) {
+                      alert("Please enter a site name");
+                      return;
+                    }
+                    onSelectBoundary({
+                      ...siteDetails,
+                      name: siteName,
+                      description: siteDesc,
+                      north_angle_deg: rotationAngle,
+                      generatorMode: 'manual'
+                    });
+                  }} 
+                  variant="success" 
+                  className="flex-[1.5] py-1.5 text-xs flex justify-center items-center gap-1.5 shadow-sm"
+                >
+                  Update Boundary ✨
+                </Button>
+              ) : (
+                <>
+                  <Button 
+                    onClick={() => {
+                      if (!siteName.trim()) {
+                        alert("Please enter a site name");
+                        return;
+                      }
+                      onSelectBoundary({
+                        ...siteDetails,
+                        name: siteName,
+                        description: siteDesc,
+                        north_angle_deg: rotationAngle,
+                        generatorMode: 'manual'
+                      });
+                    }} 
+                    variant="secondary" 
+                    className="flex-1 py-1.5 text-xs flex justify-center items-center gap-1 hover:bg-slate-50 border border-slate-200 shadow-sm"
+                  >
+                    Draw Manually ✏️
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      if (!siteName.trim()) {
+                        alert("Please enter a site name");
+                        return;
+                      }
+                      onSelectBoundary({
+                        ...siteDetails,
+                        name: siteName,
+                        description: siteDesc,
+                        north_angle_deg: rotationAngle,
+                        generatorMode: 'ai'
+                      });
+                    }} 
+                    variant="success" 
+                    className="flex-[1.5] py-1.5 text-xs flex justify-center items-center gap-1.5 shadow-sm"
+                  >
+                    Suggest with AI 🪄
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -470,7 +520,16 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
                 : 'w-full min-h-[480px]'
           }`}
         >
-          <div ref={mapRef} className="absolute inset-0 w-full h-full z-10" />
+          <div ref={mapRef} className="absolute inset-0 w-full h-full z-10" style={{ transform: `rotate(${rotationAngle}deg)`, transformOrigin: 'center center', transition: 'transform 0.3s ease-out' }} />
+          
+          {/* Floating Search Bar */}
+          {mapStep === 'draw' && (
+            <div className="absolute top-3 left-14 z-[1000] w-72 sm:w-80 shadow-md">
+              <LocationSearch onLocationSelect={(lat, lng, displayName) => {
+                setLocalSearchCenter({ lat, lng, displayName });
+              }} />
+            </div>
+          )}
           
           {/* Maximize/Minimize Toggle Button */}
           <button
@@ -494,8 +553,13 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
           {/* Floating Confirm Button in Draw step */}
           {mapStep === 'draw' && points.length >= 3 && (
             <div className="absolute bottom-6 right-6 z-[1000]">
-              <Button 
-                onClick={() => setMapStep('finalize')} 
+              <Button
+                onClick={() => {
+                  setMapStep('finalize');
+                  if (document.fullscreenElement) {
+                    toggleMaximize();
+                  }
+                }} 
                 variant="success" 
                 className="py-2.5 px-5 text-xs font-bold shadow-lg flex items-center gap-2 rounded-full hover:scale-105 active:scale-95 transition-all"
               >

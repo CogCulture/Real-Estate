@@ -335,7 +335,7 @@ const getClippedZonePoints = (zone, roads, scale) => {
 };
 
 
-export default function Canvas2D({ width, height, viewMode = 'grass' }) {
+export default function Canvas2D({ width, height, viewMode = 'grass', showDimensions = true }) {
   const {
     zones,
     roads,
@@ -450,7 +450,16 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
   const contextMenuRef = useRef(null);
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const tileLayerRef = useRef(null);
+  const baseZoomRef = useRef(17);
+  const [leafletZoom, setLeafletZoom] = useState(17);
   const mapWrapperRef = useRef(null);
+
+  const getMapTransform = (x, y, s) => {
+    const tx = x + width * 2;
+    const ty = y + height * 2;
+    return `translate(${tx}px, ${ty}px) scale(${s}) rotate(${(meta.north_angle_deg || 0)}deg)`;
+  };
 
   const rotationStartPointsRef = useRef([]);
   const rotationCenterRef = useRef({ x: 0, y: 0 });
@@ -461,10 +470,10 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
     if (!meta.showNumberLegend) return [];
     const uniqueLabels = new Set();
     zones.forEach(z => {
-      if (z.label) uniqueLabels.add(z.label.toUpperCase());
+      if (z.label) uniqueLabels.add(z.label.toUpperCase().replace(/\s+COPY.*$/i, '').trim());
     });
     amenities.forEach(a => {
-      if (a.type !== 'tree' && a.label) uniqueLabels.add(a.label.toUpperCase());
+      if (a.type !== 'tree' && a.label) uniqueLabels.add(a.label.toUpperCase().replace(/\s+COPY.*$/i, '').trim());
     });
     return Array.from(uniqueLabels).map((label, idx) => ({
       number: idx + 1,
@@ -474,7 +483,7 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
 
   const getLegendNumber = (label) => {
     if (!label) return null;
-    const match = legendMapping.find(l => l.label === label.toUpperCase());
+    const match = legendMapping.find(l => l.label === label.toUpperCase().replace(/\s+COPY.*$/i, '').trim());
     return match ? match.number : null;
   };
 
@@ -1130,6 +1139,93 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
         else if (cb.itemType === 'amenity') duplicateAmenity(cb.item);
       }
       
+      
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        if (selectedElementId) {
+          e.preventDefault();
+          const moveStep = 20;
+          let dx = 0, dy = 0;
+          if (e.key === 'ArrowUp') dy = -moveStep;
+          if (e.key === 'ArrowDown') dy = moveStep;
+          if (e.key === 'ArrowLeft') dx = -moveStep;
+          if (e.key === 'ArrowRight') dx = moveStep;
+          
+          const state = useLayoutStore.getState();
+          const selectedZone = state.zones.find(z => z.id === selectedElementId);
+          if (selectedZone) {
+            state.updateZone(selectedElementId, { x_px: selectedZone.x_px + dx, y_px: selectedZone.y_px + dy });
+          } else {
+            const selectedAmenity = state.amenities.find(a => a.id === selectedElementId);
+            if (selectedAmenity) {
+              state.updateAmenity(selectedElementId, { x_px: selectedAmenity.x_px + dx, y_px: selectedAmenity.y_px + dy });
+            } else {
+               const selectedRoad = state.roads.find(r => r.id === selectedElementId);
+               if (selectedRoad && selectedRoad.points_px) {
+                  const newPts = selectedRoad.points_px.map(p => [p[0] + dx, p[1] + dy]);
+                  state.updateRoad(selectedElementId, { points_px: newPts });
+               }
+            }
+          }
+        }
+      }
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        if (!selectedElementId) return;
+        
+        // Prevent default scrolling
+        e.preventDefault();
+
+        const moveStep = e.shiftKey ? 10 : 1;
+        const dx = e.key === 'ArrowLeft' ? -moveStep : e.key === 'ArrowRight' ? moveStep : 0;
+        const dy = e.key === 'ArrowUp' ? -moveStep : e.key === 'ArrowDown' ? moveStep : 0;
+        
+        const zone = zones.find(z => z.id === selectedElementId);
+        if (zone && zone.points_px && zone.points_px.length > 0) {
+          const updatedPointsPx = zone.points_px.map(p => [p[0] + dx, p[1] + dy]);
+          const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
+          const bbox = getPolygonBoundingBox(updatedPointsPx);
+          updateZone(zone.id, {
+            points_px: updatedPointsPx,
+            points_m: updatedPointsM,
+            x_px: bbox.minX,
+            y_px: bbox.minY,
+            width_px: bbox.width,
+            height_px: bbox.height,
+            x_m: pxToM(bbox.minX, scale),
+            y_m: pxToM(bbox.minY, scale),
+            width_m: pxToM(bbox.width, scale),
+            height_m: pxToM(bbox.height, scale),
+          });
+          return;
+        }
+
+        const amenity = amenities.find(a => a.id === selectedElementId);
+        if (amenity && amenity.points_px && amenity.points_px.length > 0) {
+          const updatedPointsPx = amenity.points_px.map(p => [p[0] + dx, p[1] + dy]);
+          const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
+          const bbox = getPolygonBoundingBox(updatedPointsPx);
+          updateAmenity(amenity.id, {
+            points_px: updatedPointsPx,
+            points_m: updatedPointsM,
+            x_px: bbox.minX,
+            y_px: bbox.minY,
+            x_m: pxToM(bbox.minX, scale),
+            y_m: pxToM(bbox.minY, scale)
+          });
+          return;
+        }
+        
+        const road = roads.find(r => r.id === selectedElementId);
+        if (road && road.points_px && road.points_px.length > 0) {
+          const updatedPointsPx = road.points_px.map(p => [p[0] + dx, p[1] + dy]);
+          const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
+          updateRoad(road.id, {
+            points_px: updatedPointsPx,
+            points_m: updatedPointsM
+          });
+          return;
+        }
+      }
+      
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (!selectedElementId) return;
         // Delete the currently selected item
@@ -1152,12 +1248,15 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedElementId, zones, roads, amenities, gridUnit]);
 
-  // Leaflet Background Map initialization and bounds sync
+  const hasMapMode = viewMode === 'satellite' || viewMode === 'street';
+
+  // 1. Leaflet Background Map initialization and bounds sync
   useEffect(() => {
-    if (viewMode !== 'satellite' && viewMode !== 'street') {
+    if (!hasMapMode) {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+        tileLayerRef.current = null;
       }
       return;
     }
@@ -1168,6 +1267,7 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
       mapInstanceRef.current = null;
+      tileLayerRef.current = null;
     }
 
     // Determine center and bounds mapping
@@ -1227,12 +1327,29 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
       map.setView([centerLat, centerLng], 17);
     }
 
+    const persistedStreetUrl = localStorage.getItem('active_basemap_street') || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
     const tileUrl = viewMode === 'satellite'
       ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-      : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      : persistedStreetUrl;
 
-    L.tileLayer(tileUrl).addTo(map);
+    tileLayerRef.current = L.tileLayer(tileUrl, {
+      detectRetina: true,
+      maxNativeZoom: 19,
+      maxZoom: 22
+    }).addTo(map);
     mapInstanceRef.current = map;
+    const setupInitialZoom = () => {
+      const z = map.getZoom();
+      if (z !== undefined) {
+        baseZoomRef.current = z;
+        setLeafletZoom(z);
+      }
+    };
+    map.once('zoomend moveend', setupInitialZoom);
+    map.on('zoomend', () => {
+      setLeafletZoom(map.getZoom());
+    });
+    setTimeout(setupInitialZoom, 150);
 
     // Trigger invalidateSize to ensure correct tile loading
     setTimeout(() => {
@@ -1245,9 +1362,24 @@ export default function Canvas2D({ width, height, viewMode = 'grass' }) {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+        tileLayerRef.current = null;
       }
     };
-  }, [viewMode, width, height, currentProject, scale]);
+  }, [hasMapMode, width, height, currentProject, scale]);
+
+  // 2. Swappable Tile Layer URL (Updates instantly without map rebuilding!)
+  useEffect(() => {
+    if (!hasMapMode || !mapInstanceRef.current) return;
+
+    const persistedStreetUrl = localStorage.getItem('active_basemap_street') || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+    const tileUrl = viewMode === 'satellite'
+      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+      : persistedStreetUrl;
+
+    if (tileLayerRef.current) {
+      tileLayerRef.current.setUrl(tileUrl);
+    }
+  }, [viewMode, hasMapMode]);
 
   // Boundary points in pixels
   const [boundaryPoints, setBoundaryPoints] = useState([]);
@@ -1650,7 +1782,7 @@ out skel qt;`;
     const stage = stageRef.current;
     if (!stage) return;
 
-    const scaleBy = 1.15;
+    const scaleBy = 1.08;
     const oldScale = stage.scaleX();
     
     // Get pointer position (falls back to stage center if cursor is not over the stage)
@@ -1675,7 +1807,7 @@ out skel qt;`;
     setStagePos({ x: newX, y: newY });
 
     if (mapWrapperRef.current) {
-      mapWrapperRef.current.style.transform = `translate(${newX}px, ${newY}px) scale(${newScale})`;
+      mapWrapperRef.current.style.transform = getMapTransform(newX, newY, newScale);
     }
   }, [width, height]);
 
@@ -1699,6 +1831,10 @@ out skel qt;`;
   // Stage Pan and Zoom state
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [stageScale, setStageScale] = useState(1);
+  // Refs for zero-re-render imperative zoom (flushed to state after scroll ends)
+  const wheelFlushTimerRef = useRef(null);
+  const liveScaleRef = useRef(1);
+  const livePosRef = useRef({ x: 0, y: 0 });
   const prevWidthRef = useRef(null);
   const dragCasingNodeRef = useRef(null);
   const transformCasingNodeRef = useRef(null);
@@ -1961,32 +2097,44 @@ out skel qt;`;
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
-    
-    const scaleBy = 1.05;
+
+    const scaleBy = 1.03;
+    // Read directly from the Konva node — not React state — so we're always current
     const oldScale = stage.scaleX();
     const pointer = stage.getPointerPosition();
-    
+    if (!pointer) return;
+
     const mousePointTo = {
       x: (pointer.x - stage.x()) / oldScale,
       y: (pointer.y - stage.y()) / oldScale,
     };
-    
-    // Zoom in on scroll up, zoom out on scroll down
+
     const direction = e.evt.deltaY > 0 ? -1 : 1;
     const newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-    
-    // Limit scale (e.g., between 0.1 and 10)
     if (newScale < 0.1 || newScale > 10) return;
 
     const newX = pointer.x - mousePointTo.x * newScale;
     const newY = pointer.y - mousePointTo.y * newScale;
 
-    setStageScale(newScale);
-    setStagePos({ x: newX, y: newY });
+    // ---- Imperative update (zero React re-renders during scroll) ----
+    stage.scale({ x: newScale, y: newScale });
+    stage.position({ x: newX, y: newY });
+    stage.batchDraw();
 
     if (mapWrapperRef.current) {
-      mapWrapperRef.current.style.transform = `translate(${newX}px, ${newY}px) scale(${newScale})`;
+      mapWrapperRef.current.style.transform = getMapTransform(newX, newY, newScale);
     }
+
+    // Track latest values in refs
+    liveScaleRef.current = newScale;
+    livePosRef.current = { x: newX, y: newY };
+
+    // Debounce: flush to React state ~120ms after the last scroll tick
+    if (wheelFlushTimerRef.current) clearTimeout(wheelFlushTimerRef.current);
+    wheelFlushTimerRef.current = setTimeout(() => {
+      setStageScale(liveScaleRef.current);
+      setStagePos(livePosRef.current);
+    }, 120);
   };
 
   // Drag & drop road handler
@@ -2261,7 +2409,7 @@ out skel qt;`;
     return treeList.map(tree => {
       const sizePxMap = { lg: 22, md: 15, sm: 10 };
       const px = sizePxMap[tree.size] || 18;
-      const img = assets ? (tree.variant % 2 === 0 ? assets.treePlan2 : assets.treePlan1) : null;
+      const img = null;
 
       if (img) {
         // Use image sprite when assets are loaded
@@ -3050,63 +3198,21 @@ out skel qt;`;
     const sy = node.scaleY();
     const rotRad = (node.rotation() * Math.PI) / 180;
 
-    // Reset scales/translation to 1 / 0 so updates apply directly to points
     node.scaleX(1);
     node.scaleY(1);
     node.x(0);
     node.y(0);
-    node.rotation(0);
-    setDimTooltip(null);
-
-    // Map original points with transformation matrix math
-    const originalPts = getZonePoints(zone);
-    const updatedPointsPx = originalPts.map(([px, py]) => {
-      const xs = px * sx;
-      const ys = py * sy;
-      const xr = xs * Math.cos(rotRad) - ys * Math.sin(rotRad);
-      const yr = xs * Math.sin(rotRad) + ys * Math.cos(rotRad);
-      return [snapValue(xr + dx), snapValue(yr + dy)];
-    });
-
-    const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
-    const bbox = getPolygonBoundingBox(updatedPointsPx);
-    const clippedPointsM = clipZoneGeometryAgainstRoads(updatedPointsM, roads);
-    const areaSqm = calculatePolygonArea(clippedPointsM);
-    const newRotation = ((zone.rotation_deg || 0) + (rotRad * 180 / Math.PI)) % 360;
-
-    updateZone(zone.id, {
-      points_px: updatedPointsPx,
-      points_m: updatedPointsM,
-      x_px: bbox.minX,
-      y_px: bbox.minY,
-      width_px: bbox.width,
-      height_px: bbox.height,
-      x_m: pxToM(bbox.minX, scale),
-      y_m: pxToM(bbox.minY, scale),
-      width_m: pxToM(bbox.width, scale),
-      height_m: pxToM(bbox.height, scale),
-      rotation_deg: newRotation,
-      'properties.plot_size_sqm': areaSqm
-    });
-  };
-
-  const handleAmenityTransformEnd = (e, amenity) => {
-    const node = e.target;
-    const dx = node.x();
-    const dy = node.y();
-    const sx = node.scaleX();
-    const sy = node.scaleY();
-    const rotRad = (node.rotation() * Math.PI) / 180;
-
-    node.scaleX(1);
-    node.scaleY(1);
-    node.x(0);
-    node.y(0);
-    node.rotation(0);
+    
     setDimTooltip(null);
 
     const originalPts = getAmenityPoints(amenity);
-    const updatedPointsPx = originalPts.map(([px, py]) => {
+    const oldRotRad = (amenity.rotation_deg || 0) * Math.PI / 180;
+    const localPts = originalPts.map(([px, py]) => [
+      px * Math.cos(-oldRotRad) - py * Math.sin(-oldRotRad),
+      px * Math.sin(-oldRotRad) + py * Math.cos(-oldRotRad)
+    ]);
+
+    const updatedPointsPx = localPts.map(([px, py]) => {
       const xs = px * sx;
       const ys = py * sy;
       const xr = xs * Math.cos(rotRad) - ys * Math.sin(rotRad);
@@ -3124,7 +3230,7 @@ out skel qt;`;
       y_px: bbox.minY,
       x_m: pxToM(bbox.minX, scale),
       y_m: pxToM(bbox.minY, scale),
-      rotation_deg: (amenity.rotation_deg || 0) + node.rotation()
+      rotation_deg: node.rotation() % 360
     });
   };
 
@@ -3224,6 +3330,325 @@ out skel qt;`;
     return lines;
   };
 
+  const getInwardOffsetPolygon = (points, offsetPx) => {
+    if (isNaN(offsetPx) || offsetPx <= 0) return points;
+    const n = points.length / 2;
+    const result = [];
+
+    for (let i = 0; i < n; i++) {
+      const x = points[i * 2];
+      const y = points[i * 2 + 1];
+
+      const prevIdx = (i - 1 + n) % n;
+      const px = points[prevIdx * 2];
+      const py = points[prevIdx * 2 + 1];
+
+      const nextIdx = (i + 1) % n;
+      const nx = points[nextIdx * 2];
+      const ny = points[nextIdx * 2 + 1];
+
+      const dx1 = x - px;
+      const dy1 = y - py;
+      const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+
+      const dx2 = nx - x;
+      const dy2 = ny - y;
+      const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+      if (len1 === 0 || len2 === 0 || isNaN(len1) || isNaN(len2)) {
+        result.push(x, y);
+        continue;
+      }
+
+      const n1x = -dy1 / len1;
+      const n1y = dx1 / len1;
+
+      const n2x = -dy2 / len2;
+      const n2y = dx2 / len2;
+
+      const bisectorX = n1x + n2x;
+      const bisectorY = n1y + n2y;
+      const bisLen = Math.sqrt(bisectorX * bisectorX + bisectorY * bisectorY);
+
+      if (bisLen === 0 || isNaN(bisLen)) {
+        result.push(x, y);
+        continue;
+      }
+
+      const cosAngle = n1x * n2x + n1y * n2y;
+      let factor = 1.0;
+      if (cosAngle > -0.95) {
+        factor = Math.sqrt(2 / (1 + cosAngle));
+      }
+      if (isNaN(factor) || factor > 3.0) {
+        factor = 3.0;
+      }
+
+      const shiftX = (bisectorX / bisLen) * offsetPx * factor;
+      const shiftY = (bisectorY / bisLen) * offsetPx * factor;
+
+      if (isNaN(shiftX) || isNaN(shiftY)) {
+        result.push(x, y);
+      } else {
+        result.push(x + shiftX, y + shiftY);
+      }
+    }
+
+    const getArea = (pts) => {
+      let area = 0;
+      const len = pts.length / 2;
+      for (let i = 0; i < len; i++) {
+        const x1 = pts[i * 2];
+        const y1 = pts[i * 2 + 1];
+        const x2 = pts[((i + 1) % len) * 2];
+        const y2 = pts[((i + 1) % len) * 2 + 1];
+        area += (x1 * y2 - x2 * y1);
+      }
+      return Math.abs(area / 2);
+    };
+
+    if (getArea(result) > getArea(points)) {
+      const flipped = [];
+      for (let i = 0; i < n; i++) {
+        const x = points[i * 2];
+        const y = points[i * 2 + 1];
+        const rx = result[i * 2];
+        const ry = result[i * 2 + 1];
+        flipped.push(x - (rx - x), y - (ry - y));
+      }
+      return flipped;
+    }
+
+    return result;
+  };
+
+  const renderSetbackLines = () => {
+    if (meta.showSetback === false || boundaryPoints.length < 6) return null;
+    const s = meta.scale_px_per_m || 2.4;
+    const setbackM = parseFloat(meta.front_setback_m) >= 0 ? parseFloat(meta.front_setback_m) : 6.0;
+    const offsetPx = setbackM * s;
+    if (isNaN(offsetPx) || offsetPx <= 0) return null;
+
+    try {
+      const setbackPoints = getInwardOffsetPolygon(boundaryPoints, offsetPx);
+      return (
+        <Line
+          points={setbackPoints}
+          stroke="#ef4444"
+          strokeWidth={1.5}
+          dash={[4, 4]}
+          closed={true}
+          listening={false}
+        />
+      );
+    } catch (err) {
+      console.error("Error drawing setbacks:", err);
+      return null;
+    }
+  };
+
+  const renderSetbackGuides = () => {
+    if (meta.showSetback === false || boundaryPoints.length < 6) return null;
+    const s = meta.scale_px_per_m || 2.4;
+    if (isNaN(s) || s <= 0) return null;
+
+    const frontM  = Math.max(0, parseFloat(meta.front_setback_m)  || 6.0);
+    const rearM   = Math.max(0, parseFloat(meta.rear_setback_m)   || 6.0);
+    const sideM   = Math.max(0, parseFloat(meta.side_setback_m)   || 3.0);
+
+    const n = boundaryPoints.length / 2;
+    if (n < 3) return null;
+
+    // Polygon centroid (used to confirm inward normals)
+    let cx = 0, cy = 0;
+    for (let i = 0; i < n; i++) { cx += boundaryPoints[i * 2]; cy += boundaryPoints[i * 2 + 1]; }
+    cx /= n; cy /= n;
+
+    // North angle offset (canvas Y is flipped vs geographic N)
+    const northDeg = meta.north_angle_deg || 0;
+
+    const elements = [];
+
+    for (let i = 0; i < n; i++) {
+      const x1 = boundaryPoints[i * 2];
+      const y1 = boundaryPoints[i * 2 + 1];
+      const x2 = boundaryPoints[((i + 1) % n) * 2];
+      const y2 = boundaryPoints[((i + 1) % n) * 2 + 1];
+
+      const edgeLen = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      if (edgeLen < 5) continue; // skip tiny edges
+
+      // Edge midpoint
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+
+      // Left-hand perpendicular (candidate inward normal)
+      let nx = -(y2 - y1) / edgeLen;
+      let ny =  (x2 - x1) / edgeLen;
+
+      // Flip to point inward (toward centroid)
+      if (nx * (cx - mx) + ny * (cy - my) < 0) { nx = -nx; ny = -ny; }
+
+      // Outward normal angle (in canvas coords) — 0° = right, 90° = down
+      // Geographic angle: canvas Y is flipped, so geographic up = canvas -Y
+      const outNx = -nx, outNy = -ny;
+      // Convert to geographic bearing: 0° = North (canvas -Y), 90° = East (canvas +X)
+      const bearingRad = Math.atan2(outNx, -outNy); // atan2(E, N)
+      let bearingDeg = (bearingRad * 180 / Math.PI - northDeg + 360) % 360;
+
+      // Assign side label and setback value based on bearing
+      let sideLabel, setbackM;
+      if (bearingDeg < 45 || bearingDeg >= 315) {
+        sideLabel = 'Rear'; setbackM = rearM;         // facing North  → rear
+      } else if (bearingDeg < 135) {
+        sideLabel = 'Side A'; setbackM = sideM;       // facing East   → right side
+      } else if (bearingDeg < 225) {
+        sideLabel = 'Front'; setbackM = frontM;       // facing South  → front
+      } else {
+        sideLabel = 'Side B'; setbackM = sideM;       // facing West   → left side
+      }
+
+      const offsetPx = setbackM * s;
+      if (offsetPx <= 0) continue;
+
+      // Perpendicular guide: midpoint of edge → inward by offsetPx
+      const endX = mx + nx * offsetPx;
+      const endY = my + ny * offsetPx;
+
+      // Tick mark half-width perpendicular to the guide
+      const tickHW = 5;
+      const tx = (x2 - x1) / edgeLen * tickHW;
+      const ty = (y2 - y1) / edgeLen * tickHW;
+
+      // Draw the dimension line
+      elements.push(
+        <Line
+          key={`sbg-line-${i}`}
+          points={[mx, my, endX, endY]}
+          stroke="#ef4444"
+          strokeWidth={1.2}
+          dash={[3, 3]}
+          listening={false}
+        />
+      );
+
+      // Tick at boundary edge midpoint
+      elements.push(
+        <Line key={`sbg-tick-start-${i}`}
+          points={[mx - tx, my - ty, mx + tx, my + ty]}
+          stroke="#ef4444" strokeWidth={1.2} listening={false}
+        />
+      );
+
+      // Tick at setback inner end
+      elements.push(
+        <Line key={`sbg-tick-end-${i}`}
+          points={[endX - tx, endY - ty, endX + tx, endY + ty]}
+          stroke="#ef4444" strokeWidth={1.2} listening={false}
+        />
+      );
+
+      // Angle of the guide for text rotation (keep text readable)
+      let textAngle = Math.atan2(ny, nx) * 180 / Math.PI;
+      if (textAngle > 90)  textAngle -= 180;
+      if (textAngle < -90) textAngle += 180;
+
+      const labelX = (mx + endX) / 2;
+      const labelY = (my + endY) / 2;
+
+      // Dimension value label
+      elements.push(
+        <Text
+          key={`sbg-val-${i}`}
+          x={labelX} y={labelY}
+          text={`${setbackM.toFixed(1)} m`}
+          fontSize={8} fontStyle="bold"
+          fill="#ef4444"
+          stroke="#ffffff" strokeWidth={2.5}
+          fillAfterStrokeEnabled={true}
+          align="center"
+          rotation={textAngle}
+          offsetX={14} offsetY={10}
+          listening={false}
+        />
+      );
+
+      // Side name label (Front / Rear / Side A / Side B)
+      elements.push(
+        <Text
+          key={`sbg-lbl-${i}`}
+          x={labelX} y={labelY}
+          text={sideLabel}
+          fontSize={7} fontStyle="bold"
+          fill="#ef4444"
+          stroke="#ffffff" strokeWidth={2}
+          fillAfterStrokeEnabled={true}
+          align="center"
+          rotation={textAngle}
+          offsetX={14} offsetY={0}
+          listening={false}
+        />
+      );
+    }
+
+    return elements.length > 0 ? elements : null;
+  };
+
+
+  const renderBoundaryDimensions = () => {
+    if (!showDimensions || boundaryPoints.length < 6) return null;
+    const elements = [];
+    const s = meta.scale_px_per_m || 2.4;
+
+    for (let i = 0; i < boundaryPoints.length; i += 2) {
+      const x1 = boundaryPoints[i];
+      const y1 = boundaryPoints[i + 1];
+      const nextIdx = (i + 2) % boundaryPoints.length;
+      const x2 = boundaryPoints[nextIdx];
+      const y2 = boundaryPoints[nextIdx + 1];
+
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const lenPx = Math.sqrt(dx * dx + dy * dy);
+      const lenM = lenPx / s;
+
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+
+      let angleRad = Math.atan2(dy, dx);
+      let angleDeg = angleRad * 180 / Math.PI;
+      if (angleDeg > 90) angleDeg -= 180;
+      if (angleDeg < -90) angleDeg += 180;
+
+      const nx = -dy / lenPx;
+      const ny = dx / lenPx;
+      const offsetPx = 15;
+      const tx = mx + nx * offsetPx;
+      const ty = my + ny * offsetPx;
+
+      elements.push(
+        <Text
+          key={`boundary-dim-${i}`}
+          x={tx}
+          y={ty}
+          text={`${lenM.toFixed(1)} m`}
+          fontSize={10}
+          fontStyle="bold"
+          fill="#000000"
+          stroke="#ffffff"
+          strokeWidth={2.5}
+          fillAfterStrokeEnabled={true}
+          align="center"
+          verticalAlign="middle"
+          rotation={angleDeg}
+          offsetX={25}
+          offsetY={5}
+        />
+      );
+    }
+    return elements;
+  };
+
   return (
     <div 
       ref={canvasRef}
@@ -3245,8 +3670,8 @@ out skel qt;`;
               width: width * 5,
               height: height * 5,
               zIndex: 0,
-              transform: `translate(${stagePos.x}px, ${stagePos.y}px) scale(${stageScale})`,
-              transformOrigin: `${width * 2}px ${height * 2}px`,
+              transform: getMapTransform(stagePos.x, stagePos.y, stageScale),
+              transformOrigin: '0px 0px',
               willChange: 'transform'
             }}
           >
@@ -3268,6 +3693,7 @@ out skel qt;`;
             y={stagePos.y}
             scaleX={stageScale}
             scaleY={stageScale}
+            listening={true}
             draggable={(activeTool === 'SELECT' || activeTool === 'HAND') && !meta.treeBrushActive}
             onContextMenu={(e) => {
               e.evt.preventDefault();
@@ -3285,7 +3711,7 @@ out skel qt;`;
               if (e.target === stageRef.current) {
                 // Imperative update for zero latency
                 if (mapWrapperRef.current) {
-                  mapWrapperRef.current.style.transform = `translate(${e.target.x()}px, ${e.target.y()}px) scale(${stageScale})`;
+                  mapWrapperRef.current.style.transform = getMapTransform(e.target.x(), e.target.y(), stageScale);
                 }
               }
             }}
@@ -3322,7 +3748,7 @@ out skel qt;`;
                   setSelectedElementId(null);
                 }}
                 onMouseEnter={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     const stage = e.target.getStage();
                     if (stage) stage.container().style.cursor = 'move';
                   }
@@ -3359,12 +3785,14 @@ out skel qt;`;
                         <Line
                           points={boundaryPoints}
                           fill={null}
-                          stroke="#ef4444"
-                          strokeWidth={1.5}
-                          dash={[8, 5]}
+                          stroke="#000000"
+                          strokeWidth={2}
                           closed={true}
                           listening={false}
                         />
+                        {renderSetbackLines()}
+                        {renderSetbackGuides()}
+                        {renderBoundaryDimensions()}
                       </>
                     );
                   }
@@ -3403,10 +3831,10 @@ out skel qt;`;
                 return (
                   <Group
                     key={`osm-${osmRoad.id}`}
-                    listening={activeTool === 'SELECT'}
+                    listening={activeTool !== 'ERASER'}
                     onContextMenu={(e) => handleOsmContextMenu(e, osmRoad)}
                     onMouseEnter={(e) => {
-                      if (activeTool === 'SELECT') {
+                      if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                         const stage = e.target.getStage();
                         if (stage) stage.container().style.cursor = 'pointer';
                       }
@@ -3540,9 +3968,9 @@ out skel qt;`;
             const isClosed = road.closed || road.type.includes('ring');
             const roadWidthPx = road.width_px;
 
-            const renderZebra = (px, py, angleDeg) => {
+            const renderZebra = (px, py, angleDeg, suffix = '') => {
               return (
-                <Group x={px} y={py} rotation={angleDeg} key={`zebra-${px}-${py}`}>
+                <Group x={px} y={py} rotation={angleDeg} key={`zebra-${road.id}-${suffix}-${px}-${py}`}>
                   <Line
                     points={[0, -road.width_px / 2 + 2, 0, road.width_px / 2 - 2]}
                     stroke="rgba(255,255,255,0.9)"
@@ -3632,7 +4060,7 @@ out skel qt;`;
                   handleRoadTransformEnd(e, road);
                 }}
                 onMouseDown={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(road.id);
                     e.cancelBubble = true;
                   }
@@ -3641,25 +4069,25 @@ out skel qt;`;
                   if (activeTool === 'ERASER') {
                     deleteRoad(road.id);
                     e.cancelBubble = true;
-                  } else if (activeTool === 'SELECT') {
+                  } else if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(road.id);
                     e.cancelBubble = true;
                   }
                 }}
                 onDblClick={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(road.id);
                     e.cancelBubble = true;
                   }
                 }}
                 onMouseEnter={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     const stage = e.target.getStage();
                     if (stage) stage.container().style.cursor = 'pointer';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     const stage = e.target.getStage();
                     if (stage) resetCursor(stage);
                   }
@@ -3708,13 +4136,19 @@ out skel qt;`;
                     <Line
                       name="road-path"
                       points={flatPoints}
-                      stroke={road.type === 'pedestrian' ? (stonePattern || '#e2c99f') : '#e5e7eb'}
+                      stroke={road.type === 'pedestrian' ? '#e2c99f' : '#e5e7eb'}
                       strokeWidth={roadWidthPx}
                       lineCap={road.sharp_corners ? "square" : "round"}
                       lineJoin={road.sharp_corners ? "miter" : "round"}
                       tension={road.sharp_corners ? 0 : 0.4}
                       listening={false}
                       closed={road.closed}
+                      sceneFunc={(context, shape) => {
+                        if (road.type === 'pedestrian' && stonePattern) {
+                          context.strokeStyle = stonePattern;
+                        }
+                        context.strokeShape(shape);
+                      }}
                     />
                   </>
                 )}
@@ -3751,13 +4185,13 @@ out skel qt;`;
                       stroke="rgba(0,0,0,0.01)" strokeWidth={15} fill="transparent"
                       listening={true}
                       onMouseEnter={(e) => {
-                        if (activeTool === 'SELECT') {
+                        if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                           const stage = e.target.getStage();
                           if (stage) stage.container().style.cursor = 'move';
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (activeTool === 'SELECT') {
+                        if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                           const stage = e.target.getStage();
                           if (stage) resetCursor(stage);
                         }
@@ -3928,14 +4362,14 @@ out skel qt;`;
                       opacity={0.6}
                       draggable={activeTool === 'SELECT'}
                       onMouseEnter={(e) => {
-                        if (activeTool === 'SELECT') {
+                        if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                           e.target.opacity(1);
                           const stage = e.target.getStage();
                           if (stage) stage.container().style.cursor = 'move';
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (activeTool === 'SELECT') {
+                        if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                           e.target.opacity(0.6);
                           const stage = e.target.getStage();
                           if (stage) resetCursor(stage);
@@ -4015,7 +4449,12 @@ out skel qt;`;
         <Layer>
           {zones.map((zone) => {
             const originalPts = getZonePoints(zone);
-            const pts = clippedZonesPoints[zone.id] || originalPts;
+            const ptsWorld = clippedZonesPoints[zone.id] || originalPts;
+            const rRad = -(zone.rotation_deg || 0) * Math.PI / 180;
+            const pts = ptsWorld.map(p => [
+              p[0] * Math.cos(rRad) - p[1] * Math.sin(rRad),
+              p[0] * Math.sin(rRad) + p[1] * Math.cos(rRad)
+            ]);
             const flatPts = pts.flat();
             if (flatPts.length === 0 || flatPts.some(v => typeof v !== 'number' || !Number.isFinite(v))) return null;
             const bbox = getPolygonBoundingBox(pts);
@@ -4032,7 +4471,7 @@ out skel qt;`;
                 y={0}
                 scaleX={1}
                 scaleY={1}
-                rotation={0}
+                rotation={zone.rotation_deg || 0}
                 width={bbox.width}
                 height={bbox.height}
                 draggable={activeTool === 'SELECT'}
@@ -4123,7 +4562,7 @@ out skel qt;`;
                 }}
                 onTransformEnd={(e) => handleTransformEnd(e, zone)}
                 onMouseDown={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(zone.id);
                     e.cancelBubble = true;
                   }
@@ -4132,13 +4571,13 @@ out skel qt;`;
                   if (activeTool === 'ERASER') {
                     deleteZone(zone.id);
                     e.cancelBubble = true;
-                  } else if (activeTool === 'SELECT') {
+                  } else if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(zone.id);
                     e.cancelBubble = true;
                   }
                 }}
                 onDblClick={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(zone.id);
                     e.cancelBubble = true;
                   }
@@ -4215,7 +4654,7 @@ out skel qt;`;
                       fill={zone.color} opacity={zone.opacity || 0.85}
                       stroke={(isSelected || isClusterSelected) ? '#4f46e5' : isBuilding ? '#0f172a' : '#374151'} strokeWidth={(isSelected || isClusterSelected) ? 2.5 : 1.2}
                       dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
-                      listening={activeTool === 'SELECT'}
+                      listening={activeTool !== 'ERASER'}
                     />
                   ) : zone.footprint === 'h_shaped' ? (
                     <Shape
@@ -4233,7 +4672,7 @@ out skel qt;`;
                       fill={zone.color} opacity={zone.opacity || 0.85}
                       stroke={(isSelected || isClusterSelected) ? '#4f46e5' : isBuilding ? '#0f172a' : '#374151'} strokeWidth={(isSelected || isClusterSelected) ? 2.5 : 1.2}
                       dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
-                      listening={activeTool === 'SELECT'}
+                      listening={activeTool !== 'ERASER'}
                     />
                   ) : zone.footprint === 'u_shaped' ? (
                     <Shape
@@ -4250,7 +4689,7 @@ out skel qt;`;
                       fill={zone.color} opacity={zone.opacity || 0.85}
                       stroke={(isSelected || isClusterSelected) ? '#4f46e5' : isBuilding ? '#0f172a' : '#374151'} strokeWidth={(isSelected || isClusterSelected) ? 2.5 : 1.2}
                       dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
-                      listening={activeTool === 'SELECT'}
+                      listening={activeTool !== 'ERASER'}
                     />
                   ) : zone.footprint === 'courtyard' ? (
                     <Shape
@@ -4267,7 +4706,7 @@ out skel qt;`;
                       fill={zone.color} opacity={zone.opacity || 0.85}
                       stroke={(isSelected || isClusterSelected) ? '#4f46e5' : isBuilding ? '#0f172a' : '#374151'} strokeWidth={(isSelected || isClusterSelected) ? 2.5 : 1.2}
                       dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
-                      listening={activeTool === 'SELECT'}
+                      listening={activeTool !== 'ERASER'}
                     />
                   ) : (
                     <Line
@@ -4278,7 +4717,7 @@ out skel qt;`;
                       stroke={(isSelected || isClusterSelected) ? '#4f46e5' : isBuilding ? '#0f172a' : '#374151'}
                       strokeWidth={(isSelected || isClusterSelected) ? 2.5 : 1.2}
                       dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
-                      listening={activeTool === 'SELECT'}
+                      listening={activeTool !== 'ERASER'}
                     />
                   )}
 
@@ -4473,7 +4912,12 @@ out skel qt;`;
 
           {/* Amenities Layer as Polygons */}
           {filteredAmenities && filteredAmenities.map((amenity) => {
-            const pts = getAmenityPoints(amenity);
+            const ptsWorld = getAmenityPoints(amenity);
+            const rRad = -(amenity.rotation_deg || 0) * Math.PI / 180;
+            const pts = ptsWorld.map(p => [
+              p[0] * Math.cos(rRad) - p[1] * Math.sin(rRad),
+              p[0] * Math.sin(rRad) + p[1] * Math.cos(rRad)
+            ]);
             const flatPts = pts.flat();
             if (flatPts.length === 0 || flatPts.some(v => typeof v !== 'number' || !Number.isFinite(v))) return null;
             const bbox = getPolygonBoundingBox(pts);
@@ -4503,7 +4947,7 @@ out skel qt;`;
                 y={0}
                 scaleX={1}
                 scaleY={1}
-                rotation={0}
+                rotation={amenity.rotation_deg || 0}
                 width={bbox.width}
                 height={bbox.height}
                 draggable={activeTool === 'SELECT'}
@@ -4542,7 +4986,7 @@ out skel qt;`;
                 }}
                 onTransformEnd={(e) => handleAmenityTransformEnd(e, amenity)}
                 onMouseDown={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(amenity.id);
                     e.cancelBubble = true;
                   }
@@ -4551,13 +4995,13 @@ out skel qt;`;
                   if (activeTool === 'ERASER') {
                     deleteAmenity(amenity.id);
                     e.cancelBubble = true;
-                  } else if (activeTool === 'SELECT') {
+                  } else if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(amenity.id);
                     e.cancelBubble = true;
                   }
                 }}
                 onDblClick={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(amenity.id);
                     e.cancelBubble = true;
                   }
@@ -4601,7 +5045,7 @@ out skel qt;`;
                         strokeWidth={1.2}
                         dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                         visible={!isSpecialPoint}
-                        listening={activeTool === 'SELECT'}
+                        listening={activeTool !== 'ERASER'}
                       />
                     </>
                   ) : (
@@ -4634,7 +5078,7 @@ out skel qt;`;
                         lineCap="round"
                         dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                         visible={!isSpecialPoint}
-                        listening={activeTool === 'SELECT'}
+                        listening={activeTool !== 'ERASER'}
                         tension={['organic', 'fluid_organic', 'serpentine_wave', 'crescent', 'bowtie_geometric', 'circular', 'oval'].includes(amenity.shape) ? 0.35 : 0}
                       />
                     </>
@@ -4651,7 +5095,7 @@ out skel qt;`;
                         fill="#cfd8dc"
                         stroke="#90a4ae"
                         strokeWidth={3}
-                        listening={activeTool === 'SELECT'}
+                        listening={activeTool !== 'ERASER'}
                       />
                       {/* Paving lines */}
                       <Line
@@ -4733,7 +5177,7 @@ out skel qt;`;
                         radiusX={bbox.width * 0.45}
                         radiusY={bbox.height * 0.45}
                         fill="rgba(0,0,0,0.1)"
-                        listening={activeTool === 'SELECT'}
+                        listening={activeTool !== 'ERASER'}
                       />
                       {/* Gazebo Roof (Octagon) */}
                       <Line
@@ -4769,7 +5213,7 @@ out skel qt;`;
                         stroke="#e2c99f"
                         strokeWidth={bbox.height * 0.4}
                         lineCap="round"
-                        listening={activeTool === 'SELECT'}
+                        listening={activeTool !== 'ERASER'}
                       />
                       {/* 3 Benches */}
                       {[0.15, 0.5, 0.85].map((pos, i) => (
@@ -4787,7 +5231,7 @@ out skel qt;`;
                         stroke="#bdbdbd"
                         strokeWidth={bbox.height * 0.15}
                         lineCap="round"
-                        listening={activeTool === 'SELECT'}
+                        listening={activeTool !== 'ERASER'}
                       />
                       {/* 3 Lamps */}
                       {[0.2, 0.5, 0.8].map((pos, i) => (
@@ -4804,7 +5248,7 @@ out skel qt;`;
                   ) : amenity.properties?.variant === 'hedge_maze' ? (
                     <>
                       {/* Base */}
-                      <Rect x={bbox.minX} y={bbox.minY} width={bbox.width} height={bbox.height} fill="#e8f5e9" stroke="#2e7d32" strokeWidth={3} listening={activeTool === 'SELECT'} />
+                      <Rect x={bbox.minX} y={bbox.minY} width={bbox.width} height={bbox.height} fill="#e8f5e9" stroke="#2e7d32" strokeWidth={3} listening={activeTool !== 'ERASER'} />
                       {/* Maze walls */}
                       <Rect x={bbox.minX + bbox.width*0.15} y={bbox.minY + bbox.height*0.15} width={bbox.width*0.7} height={bbox.height*0.7} fill="none" stroke="#43a047" strokeWidth={2.5} listening={false} />
                       <Rect x={bbox.minX + bbox.width*0.3} y={bbox.minY + bbox.height*0.3} width={bbox.width*0.4} height={bbox.height*0.4} fill="none" stroke="#66bb6a" strokeWidth={2} listening={false} />
@@ -4819,7 +5263,7 @@ out skel qt;`;
                   ) : amenity.properties?.variant === 'flower_bed' ? (
                     <>
                       {/* Bed */}
-                      <Ellipse x={bbox.cx} y={bbox.cy} radiusX={bbox.width/2} radiusY={bbox.height/2} fill="#4caf50" stroke="#2e7d32" strokeWidth={2} listening={activeTool === 'SELECT'} />
+                      <Ellipse x={bbox.cx} y={bbox.cy} radiusX={bbox.width/2} radiusY={bbox.height/2} fill="#4caf50" stroke="#2e7d32" strokeWidth={2} listening={activeTool !== 'ERASER'} />
                       {/* Flowers */}
                       <Group listening={false}>
                         <Circle cx={bbox.minX + bbox.width*0.3} cy={bbox.minY + bbox.height*0.3} radius={bbox.width*0.12} fill="#e91e63" />
@@ -4834,7 +5278,7 @@ out skel qt;`;
                   ) : amenity.properties?.variant === 'sculpture' ? (
                     <>
                       {/* Base pad */}
-                      <Rect x={bbox.minX} y={bbox.minY} width={bbox.width} height={bbox.height} fill="#e2e8f0" stroke="#cbd5e1" strokeWidth={1} cornerRadius={2} listening={activeTool === 'SELECT'} />
+                      <Rect x={bbox.minX} y={bbox.minY} width={bbox.width} height={bbox.height} fill="#e2e8f0" stroke="#cbd5e1" strokeWidth={1} cornerRadius={2} listening={activeTool !== 'ERASER'} />
                       {/* Pedestal */}
                       <Rect x={bbox.minX + bbox.width*0.2} y={bbox.minY + bbox.height*0.2} width={bbox.width*0.6} height={bbox.height*0.6} fill="#b0bec5" stroke="#78909c" strokeWidth={1.5} cornerRadius={1} listening={false} />
                       {/* Statue shadow */}
@@ -4855,7 +5299,7 @@ out skel qt;`;
                         fill="#eae4d8"
                         stroke="#a19786"
                         strokeWidth={2}
-                        listening={activeTool === 'SELECT'}
+                        listening={activeTool !== 'ERASER'}
                       />
                       {/* Inner asphalt ring */}
                       <Ellipse
@@ -4950,7 +5394,7 @@ out skel qt;`;
                     strokeWidth={(isSelected || isClusterSelected) ? 2 : 1.2}
                     dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                     visible={!isSpecialPoint}
-                    listening={activeTool === 'SELECT'}
+                    listening={activeTool !== 'ERASER'}
                   />
                 ) : assets && isWater ? (
                   amenity.shape === 'ellipse' ? (
@@ -4963,7 +5407,7 @@ out skel qt;`;
                       stroke="#29b6f6"
                       strokeWidth={1.5}
                       visible={!isSpecialPoint}
-                      listening={activeTool === 'SELECT'}
+                      listening={activeTool !== 'ERASER'}
                     />
                   ) : (
                     <Line
@@ -4978,7 +5422,7 @@ out skel qt;`;
                       lineCap="round"
                       tension={['organic', 'fluid_organic', 'serpentine_wave', 'crescent', 'bowtie_geometric', 'circular', 'oval'].includes(amenity.shape) ? 0.35 : 0}
                       visible={!isSpecialPoint}
-                      listening={activeTool === 'SELECT'}
+                      listening={activeTool !== 'ERASER'}
                     />
                   )
                 ) : false && isBuilding && assets?.[getBuildingTextureKey(amenity)] ? (
@@ -5004,7 +5448,7 @@ out skel qt;`;
                     strokeWidth={(isSelected || isClusterSelected) ? 2 : 1.2}
                     dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                     visible={!isSpecialPoint}
-                    listening={activeTool === 'SELECT'}
+                    listening={activeTool !== 'ERASER'}
                   />
                 ) : amenity.shape === 'ellipse' ? (
                   <Ellipse
@@ -5018,7 +5462,7 @@ out skel qt;`;
                     strokeWidth={(isSelected || isClusterSelected) ? 2 : 1}
                     dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                     visible={!isSpecialPoint}
-                    listening={activeTool === 'SELECT'}
+                    listening={activeTool !== 'ERASER'}
                   />
                 ) : (
                   <Line
@@ -5032,7 +5476,7 @@ out skel qt;`;
                     strokeWidth={(isSelected || isClusterSelected) ? 2 : 1}
                     dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
                     visible={!isSpecialPoint}
-                    listening={activeTool === 'SELECT'}
+                    listening={activeTool !== 'ERASER'}
                   />
                 )}
 
@@ -5072,27 +5516,14 @@ out skel qt;`;
                     )}
                     <Group listening={false} x={bbox.cx} y={bbox.cy} rotation={angleDeg}>
                     {amenity.type === 'tree' ? (
-                      <Shape
-                        sceneFunc={(context) => {
-                          const texKey = getAmenityTextureKey(amenity);
-                          const img = texKey && assets?.[texKey] ? assets[texKey] : (amenity.tree_variant === 'tree_row' ? assets?.treePlan2 : assets?.treePlan1);
-                          if (!img) return;
-                          
-                          context.save();
-                          context.fillStyle = 'rgba(0,0,0,0.18)';
-                          context.beginPath();
-                          context.ellipse(tw * 0.05, th * 0.08, tw * 0.3, th * 0.15, 0, 0, Math.PI * 2);
-                          context.fill();
-                          context.restore();
-
-                          context.save();
-                          context.beginPath();
-                          context.arc(0, 0, Math.min(tw, th) * 0.28, 0, Math.PI * 2);
-                          context.clip();
-                          drawImageContain(context, img, -tw/2, -th/2, tw, th);
-                          context.restore();
-                        }}
-                      />
+                      <Group>
+                        {/* Shadow */}
+                        <Circle x={2} y={3} radius={Math.min(tw, th) * 0.3 * 0.85} fill="rgba(0,0,0,0.18)" />
+                        {/* Outer canopy */}
+                        <Circle x={0} y={0} radius={Math.min(tw, th) * 0.3} fill="#22863a" />
+                        {/* Inner highlight */}
+                        <Circle x={-Math.min(tw, th) * 0.3 * 0.2} y={-Math.min(tw, th) * 0.3 * 0.2} radius={Math.min(tw, th) * 0.3 * 0.55} fill="#34a853" />
+                      </Group>
                     ) : (
                       <>
                         <Shape
@@ -5301,7 +5732,7 @@ out skel qt;`;
                 const tx = amenity.x_px + amenity.width_px / 2 + Math.cos(angle) * r;
                 const ty = amenity.y_px + amenity.height_px / 2 + Math.sin(angle) * r;
                 const sizePx = 14 + ((seed * i * 3.7) % 8); // Size between 14px and 22px
-                const img = (i % 2 === 0) ? img2 : img1;
+                const img = null;
 
                 if (img) {
                   trees.push(
@@ -5383,7 +5814,7 @@ out skel qt;`;
                 draggable={activeTool === 'SELECT'}
                 onContextMenu={(e) => handleContextMenu(e, 'label', lbl)}
                 onMouseEnter={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     const stage = e.target.getStage();
                     if (stage) stage.container().style.cursor = 'move';
                   }
@@ -5393,7 +5824,7 @@ out skel qt;`;
                   if (stage) resetCursor(stage);
                 }}
                 onMouseDown={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(lbl.id);
                     e.cancelBubble = true;
                   }
@@ -5402,13 +5833,13 @@ out skel qt;`;
                   if (activeTool === 'ERASER') {
                     deleteLabel(lbl.id);
                     e.cancelBubble = true;
-                  } else if (activeTool === 'SELECT') {
+                  } else if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(lbl.id);
                     e.cancelBubble = true;
                   }
                 }}
                 onDblClick={(e) => {
-                  if (activeTool === 'SELECT') {
+                  if (activeTool !== 'ERASER') { setActiveTool('SELECT');
                     setSelectedElementId(lbl.id);
                     e.cancelBubble = true;
                   }
@@ -5510,7 +5941,7 @@ out skel qt;`;
 
         {/* Legend Overlay */}
         {meta.showNumberLegend && legendMapping.length > 0 && (
-          <div className="absolute bottom-6 right-6 bg-white/95 backdrop-blur-md p-4 rounded-xl shadow-2xl border border-slate-200 pointer-events-none z-10 min-w-[220px]">
+          <div className="absolute bottom-6 left-6 bg-white/95 backdrop-blur-md p-4 rounded-xl shadow-2xl border border-slate-200 pointer-events-none z-10 min-w-[220px]">
             <h3 className="text-[11px] font-black text-slate-800 mb-3 uppercase tracking-widest border-b border-slate-100 pb-2">Master Plan (2D)</h3>
             <div className="space-y-2.5">
               {legendMapping.map(item => (

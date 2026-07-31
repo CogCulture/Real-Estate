@@ -1,12 +1,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import Landing from './pages/Landing';
 import Home from './pages/Home';
 import NewProject from './pages/NewProject';
 import Editor from './pages/Editor';
-import Preview3D from './pages/Preview3D';
 import RenderStatus from './pages/RenderStatus';
 import Admin from './pages/Admin';
+import Maps from './pages/Maps';
 
 function App() {
   return (
@@ -22,12 +23,13 @@ function App() {
         }}
       />
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="/projects" element={<Home />} />
         <Route path="/new-project" element={<NewProject />} />
         <Route path="/editor/:projectId" element={<Editor />} />
-        <Route path="/preview/:projectId" element={<Preview3D />} />
         <Route path="/render/:projectId" element={<RenderStatus />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/maps" element={<Maps />} />
       </Routes>
     </Router>
   );

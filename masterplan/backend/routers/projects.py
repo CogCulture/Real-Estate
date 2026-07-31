@@ -4,8 +4,33 @@ import uuid
 import aiosqlite
 from database import get_db
 from models import ProjectCreate, ProjectResponse
+import urllib.request
+import urllib.parse
+import json
+import ssl
 
 router = APIRouter()
+
+@router.get("/geosearch")
+def geosearch(q: str):
+    if not q.strip():
+        return []
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(q)}&format=json&limit=5"
+        req = urllib.request.Request(
+            url,
+            headers={
+                'User-Agent': 'MasterPlanTownshipApp/2.0 (architect@masterplan.com)',
+                'Accept-Language': 'en'
+            }
+        )
+        ctx = ssl._create_unverified_context()
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
+            data = response.read()
+            return json.loads(data.decode('utf-8'))
+    except Exception as e:
+        print("Geosearch Nominatim backend proxy error:", e)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch geocoding search results: {str(e)}")
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(project: ProjectCreate, db: aiosqlite.Connection = Depends(get_db)):

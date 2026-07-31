@@ -32,7 +32,7 @@ export default function Admin() {
       <div className="max-w-5xl mx-auto space-y-8">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link to="/" className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+            <Link to="/projects" className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
               <ArrowLeft size={20} className="text-slate-600" />
             </Link>
             <div>

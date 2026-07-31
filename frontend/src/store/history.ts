@@ -1,7 +1,6 @@
 import { create } from 'zustand';
-import { DesignGenome, Snapshot } from '../../../shared/types';
+import type { DesignGenome, Snapshot } from '../../../shared/types';
 import { v4 as uuidv4 } from 'uuid';
-import crypto from 'crypto-js'; // Requires crypto-js for browser hash, using a simple string concat for now
 
 interface HistoryStore {
   history: Snapshot[];

@@ -6,10 +6,15 @@ export const ZONE_COLORS = {
   green_belt:   '#27AE60',   // Green
   water_body:   '#2980B9',   // Dark blue
   park:         '#2ECC71',   // Light green
-  parking:      '#BDC3C7',   // Light gray
+  parking:      '#5D6D7E',   // Dark Gray
   amenity:      '#E74C3C',   // Red
   institutional:'#F39C12',   // Yellow-orange
   open_space:   '#ECF0F1',   // Off white
+  pool:         '#3498DB',   // Sky Blue (Swimming Pool)
+  clubhouse:    '#1ABC9C',   // Teal (Clubhouse)
+  central_lawn: '#558B2F',   // Olive Green (Central Lawn)
+  sports:       '#E74C3C',   // Red (Tennis, Sports)
+  kids:         '#F1C40F',   // Sunflower Yellow (Kids Play Area)
 };
 
 export const ROAD_COLORS = {
