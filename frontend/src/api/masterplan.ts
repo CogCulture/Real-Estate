@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { DesignGenome, GenerationResponse } from '../../../shared/types';
+import type { DesignGenome, GenerationResponse } from '@shared/types';
 
 export const MasterplanAPI = {
   generate: async (genome: DesignGenome, signal?: AbortSignal): Promise<GenerationResponse> => {

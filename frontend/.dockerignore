@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.vscode
+__tests__
+dist
+*.md
+*.json
+!package.json
+!package-lock.json
+!tsconfig*.json
+!vite.config.ts
+!tailwind.config.js
+!postcss.config.js
+public
+!../shared

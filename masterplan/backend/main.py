@@ -66,8 +66,9 @@ if __name__ == "__main__":
     celery_proc = subprocess.Popen(celery_cmd, cwd=backend_dir)
 
     try:
-        print("Starting FastAPI Uvicorn web server on http://localhost:8001...")
-        uvicorn.run("main:app", host="0.0.0.0", port=8001)
+        port = int(os.environ.get("PORT", 8001))
+        print(f"Starting FastAPI Uvicorn web server on http://localhost:{port}...")
+        uvicorn.run("main:app", host="0.0.0.0", port=port)
     finally:
         print("Terminating Celery worker process...")
         celery_proc.terminate()

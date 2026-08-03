@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ProgressEvent } from '../../../shared/types';
+import type { ProgressEvent } from '@shared/types';
 
 interface ProgressStore {
   event: ProgressEvent | null;

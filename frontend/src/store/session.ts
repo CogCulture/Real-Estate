@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DesignSession, DesignGenome } from '../../../shared/types';
+import type { DesignSession, DesignGenome } from '@shared/types';
 
 interface SessionStore extends DesignSession {
   setGenome: (genome: DesignGenome) => void;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Hand, MousePointer2, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { Hand, MousePointer2, Maximize } from 'lucide-react';
 import { useEditorStore } from '../store/editor';
 
 export const Toolbar: React.FC = () => {

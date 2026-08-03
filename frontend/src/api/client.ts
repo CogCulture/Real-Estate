@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Singleton HTTP Client
 export const apiClient = axios.create({
-  baseURL: 'http://localhost:3000/api',
+  baseURL: '/api',
   headers: {
     'Content-Type': 'application/json'
   }

@@ -1,11 +1,7 @@
 import React from 'react';
 import { useEditorStore } from '../store/editor';
 
-interface Props {
-  scene: any;
-}
-
-export const PropertiesPanel: React.FC<Props> = ({ scene }) => {
+export const PropertiesPanel: React.FC = () => {
   const { selectedIds } = useEditorStore();
   
   if (selectedIds.length === 0) {

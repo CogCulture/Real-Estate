@@ -47,7 +47,7 @@ export const GenomeEditorPanel: React.FC = () => {
         {/* Objective Weights */}
         <div>
           <h3 className="text-sm text-gray-400 mb-2">Optimizer Weights</h3>
-          {Object.entries(objectiveWeights).map(([key, val]) => (
+          {Object.entries(objectiveWeights).map(([key, val]: [string, number]) => (
             <div key={key} className="mb-2">
               <label className="block text-xs mb-1 capitalize">{key} ({(val * 100).toFixed(0)}%)</label>
               <input 

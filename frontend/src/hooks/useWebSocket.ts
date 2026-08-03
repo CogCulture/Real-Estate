@@ -6,7 +6,7 @@ export const useWebSocket = () => {
   const setEvent = useProgressStore(state => state.setEvent);
 
   useEffect(() => {
-    const socket = io('http://localhost:3000');
+    const socket = io();
     
     socket.on('progress', (event) => {
       setEvent(event);

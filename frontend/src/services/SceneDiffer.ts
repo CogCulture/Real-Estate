@@ -1,4 +1,4 @@
-import type { RenderScene, RenderPrimitive } from '../../../shared/types';
+import type { RenderScene, RenderPrimitive } from '@shared/types';
 
 export interface DiffResult {
   added: RenderPrimitive[];

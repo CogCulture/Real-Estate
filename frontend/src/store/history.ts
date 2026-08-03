@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DesignGenome, Snapshot } from '../../../shared/types';
+import type { DesignGenome, Snapshot } from '@shared/types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface HistoryStore {

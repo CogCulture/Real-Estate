@@ -12,21 +12,34 @@ export class CommandDispatcher {
 }
 
 export class PanCommand implements Command {
-  constructor(private x: number, private y: number) {}
+  private x: number;
+  private y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
   execute() {
     useEditorStore.getState().setViewport(this.x, this.y, useEditorStore.getState().scale);
   }
 }
 
 export class ZoomCommand implements Command {
-  constructor(private scale: number) {}
+  private scale: number;
+  constructor(scale: number) {
+    this.scale = scale;
+  }
   execute() {
     useEditorStore.getState().setViewport(useEditorStore.getState().x, useEditorStore.getState().y, this.scale);
   }
 }
 
 export class SelectCommand implements Command {
-  constructor(private ids: string[], private multi: boolean = false) {}
+  private ids: string[];
+  private multi: boolean;
+  constructor(ids: string[], multi: boolean = false) {
+    this.ids = ids;
+    this.multi = multi;
+  }
   execute() {
     const store = useEditorStore.getState();
     if (this.ids.length === 0) {

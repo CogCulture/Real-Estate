@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Viewport } from './canvas/Viewport';
 import { Toolbar } from './components/Toolbar';
 import { GenomeEditorPanel } from './components/GenomeEditorPanel';
