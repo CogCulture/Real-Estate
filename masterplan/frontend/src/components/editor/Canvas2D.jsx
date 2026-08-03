@@ -1073,6 +1073,9 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
   // Asset/Texture Cache State
   const [assets, setAssets] = useState(null);
   const [stonePattern, setStonePattern] = useState(null);
+
+  // Legend collapsed state — starts collapsed so it doesn't block the layout
+  const [legendCollapsed, setLegendCollapsed] = useState(true);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -5934,19 +5937,46 @@ out skel qt;`;
           </Stage>
         </div>
 
-        {/* Legend Overlay */}
+        {/* Legend Dropdown — collapsed by default, click header to expand */}
         {meta.showNumberLegend && legendMapping.length > 0 && (
-          <div className="absolute bottom-6 left-6 bg-white/95 backdrop-blur-md p-4 rounded-xl shadow-2xl border border-slate-200 pointer-events-none z-10 min-w-[220px]">
-            <h3 className="text-[11px] font-black text-slate-800 mb-3 uppercase tracking-widest border-b border-slate-100 pb-2">Master Plan (2D)</h3>
-            <div className="space-y-2.5">
-              {legendMapping.map(item => (
-                <div key={item.number} className="flex items-center gap-3">
-                  <div className="w-5 h-5 rounded-full border border-slate-300 bg-slate-50 flex items-center justify-center text-[10px] font-bold text-slate-800 shadow-sm shrink-0">
-                    {item.number}
+          <div
+            className="absolute bottom-6 left-6 z-20"
+            style={{ pointerEvents: 'auto' }}
+          >
+            {/* Toggle pill */}
+            <button
+              onClick={() => setLegendCollapsed(v => !v)}
+              className="flex items-center gap-2 bg-white/95 backdrop-blur-md border border-slate-200 rounded-lg shadow-lg px-3 py-2 hover:bg-slate-50 transition-all duration-200 w-full"
+            >
+              <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Master Plan (2D)</span>
+              <span
+                className="ml-auto text-slate-400 transition-transform duration-200 text-[10px]"
+                style={{ transform: legendCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}
+              >
+                ▼
+              </span>
+            </button>
+
+            {/* Expandable list */}
+            <div
+              className="bg-white/95 backdrop-blur-md border border-slate-200 border-t-0 rounded-b-lg shadow-lg overflow-hidden transition-all duration-200"
+              style={{
+                maxHeight: legendCollapsed ? 0 : '320px',
+                opacity: legendCollapsed ? 0 : 1,
+                overflowY: legendCollapsed ? 'hidden' : 'auto',
+                minWidth: '200px'
+              }}
+            >
+              <div className="p-3 space-y-2">
+                {legendMapping.map(item => (
+                  <div key={item.number} className="flex items-center gap-2.5">
+                    <div className="w-5 h-5 rounded-full border border-slate-200 bg-slate-50 flex items-center justify-center text-[9px] font-bold text-slate-700 shadow-sm shrink-0">
+                      {item.number}
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-600 leading-tight">{item.label}</span>
                   </div>
-                  <span className="text-[11px] font-bold text-slate-600 leading-tight">{item.label}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}
