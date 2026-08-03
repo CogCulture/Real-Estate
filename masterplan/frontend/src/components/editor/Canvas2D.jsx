@@ -456,9 +456,12 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
   const mapWrapperRef = useRef(null);
 
   const getMapTransform = (x, y, s) => {
-    const tx = x + width * 2;
-    const ty = y + height * 2;
-    return `translate(${tx}px, ${ty}px) scale(${s}) rotate(${(meta.north_angle_deg || 0)}deg)`;
+    // The map wrapper is positioned at top:-height*2, left:-width*2 via CSS.
+    // We only need to apply the stage pan offset (x, y) plus a scale-correction
+    // so world-origin (0,0) stays under canvas position (x, y) at any zoom level.
+    const tx = x + width * 2 * (1 - s);
+    const ty = y + height * 2 * (1 - s);
+    return `translate(${tx}px, ${ty}px) scale(${s})`;
   };
 
   const rotationStartPointsRef = useRef([]);
@@ -5916,24 +5919,16 @@ out skel qt;`;
             );
           })()}
 
-          {/* Selection Transformer Handles */}
+          {/* Selection Outline — no rotation, no resize anchors, locked bounding box */}
           <Transformer
             ref={transformerRef}
+            rotateEnabled={false}
+            resizeEnabled={false}
+            enabledAnchors={[]}
             borderStroke="#4f46e5"
             borderStrokeWidth={1.5}
-            anchorStroke="#4f46e5"
-            anchorFill="#ffffff"
-            anchorSize={5}
-            anchorCornerRadius={2}
-            rotateAnchorOffset={15}
-            onTransform={handleTransform}
-            keepRatio={selectedElementId && roads.some(r => r.id === selectedElementId && r.type?.startsWith('ring'))}
-            boundBoxFunc={(oldBox, newBox) => {
-              if (newBox.width < gridUnit * 5 || newBox.height < gridUnit * 5) {
-                return oldBox;
-              }
-              return newBox;
-            }}
+            borderDash={[4, 3]}
+            anchorSize={0}
           />
         </Layer>
           </Stage>

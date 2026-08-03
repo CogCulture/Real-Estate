@@ -520,7 +520,7 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
                 : 'w-full min-h-[480px]'
           }`}
         >
-          <div ref={mapRef} className="absolute inset-0 w-full h-full z-10" style={{ transform: `rotate(${rotationAngle}deg)`, transformOrigin: 'center center', transition: 'transform 0.3s ease-out' }} />
+          <div ref={mapRef} className="absolute inset-0 w-full h-full z-10" />
           
           {/* Floating Search Bar */}
           {mapStep === 'draw' && (
