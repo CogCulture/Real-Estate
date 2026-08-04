@@ -775,6 +775,21 @@ def resolve_layout(masterplan_json: dict, boundary_poly: list, site_width_m: flo
     # Solve constraints
     solver = ConstraintSolver(boundary_poly, site_width_m, site_height_m, project_features)
     solver.solve(elements, iterations=100, roads=roads, paths=paths)
+
+    # Update element positions from solver results
+    for el in elements:
+        if el["type"] == "tower":
+            # Find corresponding tower in original list
+            for t in towers:
+                if t["id"] == el["id"]:
+                    t.update(el)
+                    break
+        elif el["type"] == "amenity":
+            # Find corresponding amenity in original list
+            for a in amenities:
+                if a["id"] == el["id"]:
+                    a.update(el)
+                    break
     
     # Update back to masterplan_json
     masterplan_json["towers"] = towers
