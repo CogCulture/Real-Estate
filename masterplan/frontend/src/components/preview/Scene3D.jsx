@@ -71,6 +71,110 @@ function createRoundedRectShape(width, height, radius) {
   return shape;
 }
 
+function createHipRoofGeometry(w, h, rHeight) {
+  const geom = new THREE.BufferGeometry();
+  
+  // Corners
+  const c0 = [-w/2, 0, -h/2];
+  const c1 = [ w/2, 0, -h/2];
+  const c2 = [ w/2, 0,  h/2];
+  const c3 = [-w/2, 0,  h/2];
+  
+  let r0, r1;
+  if (w >= h) {
+    const offset = h / 4;
+    r0 = [-w/2 + offset, rHeight, 0];
+    r1 = [ w/2 - offset, rHeight, 0];
+  } else {
+    const offset = w / 4;
+    r0 = [0, rHeight, -h/2 + offset];
+    r1 = [0, rHeight,  h/2 - offset];
+  }
+  
+  const pts = [c0, c1, c2, c3, r0, r1];
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+  
+  let indices = [];
+  if (w >= h) {
+    // West triangle: 0, 4, 3
+    indices.push(0, 4, 3);
+    // East triangle: 2, 5, 1
+    indices.push(2, 5, 1);
+    // North slope: 1, 5, 4 and 1, 4, 0
+    indices.push(1, 5, 4);
+    indices.push(1, 4, 0);
+    // South slope: 3, 4, 5 and 3, 5, 2
+    indices.push(3, 4, 5);
+    indices.push(3, 5, 2);
+  } else {
+    // North triangle: 0, 4, 1
+    indices.push(0, 4, 1);
+    // South triangle: 3, 2, 5
+    indices.push(3, 2, 5);
+    // West slope: 0, 5, 4 and 0, 3, 5
+    indices.push(0, 5, 4);
+    indices.push(0, 3, 5);
+    // East slope: 1, 4, 5 and 1, 5, 2
+    indices.push(1, 4, 5);
+    indices.push(1, 5, 2);
+  }
+  
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+  return geom;
+}
+
+function createGableRoofGeometry(w, h, rHeight) {
+  const geom = new THREE.BufferGeometry();
+  
+  // Corners
+  const c0 = [-w/2, 0, -h/2];
+  const c1 = [ w/2, 0, -h/2];
+  const c2 = [ w/2, 0,  h/2];
+  const c3 = [-w/2, 0,  h/2];
+  
+  let r0, r1;
+  if (w >= h) {
+    r0 = [-w/2, rHeight, 0];
+    r1 = [ w/2, rHeight, 0];
+  } else {
+    r0 = [0, rHeight, -h/2];
+    r1 = [0, rHeight,  h/2];
+  }
+  
+  const pts = [c0, c1, c2, c3, r0, r1];
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pts.flat(), 3));
+  
+  let indices = [];
+  if (w >= h) {
+    // West triangle: 0, 4, 3
+    indices.push(0, 4, 3);
+    // East triangle: 1, 2, 5
+    indices.push(1, 2, 5);
+    // North slope: 0, 5, 4 and 0, 1, 5
+    indices.push(0, 5, 4);
+    indices.push(0, 1, 5);
+    // South slope: 3, 4, 5 and 3, 5, 2
+    indices.push(3, 4, 5);
+    indices.push(3, 5, 2);
+  } else {
+    // North triangle: 0, 4, 1
+    indices.push(0, 4, 1);
+    // South triangle: 3, 2, 5
+    indices.push(3, 2, 5);
+    // West slope: 0, 5, 4 and 0, 3, 5
+    indices.push(0, 5, 4);
+    indices.push(0, 3, 5);
+    // East slope: 1, 4, 5 and 1, 5, 2
+    indices.push(1, 4, 5);
+    indices.push(1, 5, 2);
+  }
+  
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+  return geom;
+}
+
 function createLakeShape(width, height) {
   const shape = new THREE.Shape();
   const w = width / 2;
@@ -249,41 +353,59 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
       group.rotation.y = -(zone.rotation_deg || 0) * Math.PI / 180;
 
       if (isBuilding) {
+        const hashVal = typeof zone.id === 'string' ? zone.id.charCodeAt(zone.id.length - 1) % 3 : 0;
+        const bHeight = 7 + (hashVal * 3); // 7m, 10m, or 13m height
+
+        // Extrude footprint geometry
         const footprintShape = createRoundedRectShape(
           Math.max(2, zw - 1.5),
           Math.max(2, zh - 1.5),
           Math.min(zw, zh) * 0.18
         );
-        const footprint = new THREE.Mesh(
-          new THREE.ShapeGeometry(footprintShape),
+        
+        const extrudeSettings = {
+          depth: bHeight,
+          bevelEnabled: true,
+          bevelThickness: 0.05,
+          bevelSize: 0.05,
+          bevelSegments: 2
+        };
+        const buildingGeom = new THREE.ExtrudeGeometry(footprintShape, extrudeSettings);
+        
+        const buildingMesh = new THREE.Mesh(
+          buildingGeom,
           new THREE.MeshStandardMaterial({
             color: color.clone().offsetHSL(0, 0, -0.08),
-            roughness: 0.78,
-            metalness: 0.04
+            roughness: 0.7,
+            metalness: 0.08,
+            envMapIntensity: 0.12
           })
         );
-        footprint.rotation.x = -Math.PI / 2;
-        footprint.position.set(0, 0.08, 0);
-        footprint.castShadow = true;
-        footprint.receiveShadow = true;
-        group.add(footprint);
+        buildingMesh.rotation.x = -Math.PI / 2;
+        buildingMesh.position.set(0, 0.08, 0);
+        buildingMesh.castShadow = true;
+        buildingMesh.receiveShadow = true;
+        group.add(buildingMesh);
 
-        const roofInsetShape = createRoundedRectShape(
-          Math.max(1.4, zw - 6),
-          Math.max(1.4, zh - 6),
-          Math.min(zw, zh) * 0.12
-        );
-        const roofInset = new THREE.Mesh(
-          new THREE.ShapeGeometry(roofInsetShape),
-          new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.08
-          })
-        );
-        roofInset.rotation.x = -Math.PI / 2;
-        roofInset.position.set(0, 0.09, 0);
-        group.add(roofInset);
+        // Add 3D Roof structure
+        const w = Math.max(2, zw - 1.5);
+        const h = Math.max(2, zh - 1.5);
+        const rHeight = Math.min(w, h) * 0.28;
+
+        const roofColor = color.clone().offsetHSL(0, 0.04, -0.22);
+        const roofMat = new THREE.MeshStandardMaterial({
+          color: roofColor,
+          roughness: 0.72,
+          metalness: 0.05,
+          side: THREE.DoubleSide
+        });
+
+        // Force Gable Roof for all 3D buildings
+        const roofGeom = createGableRoofGeometry(w, h, rHeight);
+        const roofMesh = new THREE.Mesh(roofGeom, roofMat);
+        roofMesh.position.set(0, bHeight + 0.08, 0);
+        roofMesh.castShadow = true;
+        group.add(roofMesh);
 
         scene.add(group);
       } else {

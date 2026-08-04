@@ -82,3 +82,42 @@ input[type="number"] {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
 }
+
+/* Slim scrollbars for sidebars */
+.sidebar-container,
+.sidebar-container * {
+  scrollbar-width: thin;
+}
+
+.sidebar-container ::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+}
+
+.sidebar-container ::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.sidebar-container ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3) !important;
+  border-radius: 0px !important;
+}
+
+.sidebar-container ::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6) !important;
+}
+
+/* Sharp corners for all buttons, inputs, selects, hover highlights, and active states inside sidebars */
+.sidebar-container button,
+.sidebar-container select,
+.sidebar-container input,
+.sidebar-container .rounded-lg,
+.sidebar-container .rounded-md,
+.sidebar-container .rounded,
+.sidebar-container .rounded-xl,
+.sidebar-container .rounded-full,
+.sidebar-container button::after,
+.sidebar-container button::before {
+  border-radius: 0px !important;
+}
+

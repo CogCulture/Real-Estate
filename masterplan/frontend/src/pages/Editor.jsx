@@ -46,8 +46,13 @@ export default function Editor() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [viewMode, setViewMode] = useState(() => localStorage.getItem('masterplan_viewMode') || 'street');
-  
+  // Always default to 'street' (OSM map) — 'grass'/'concrete' are 3D preview modes only
+  const [viewMode, setViewMode] = useState(() => {
+    const stored = localStorage.getItem('masterplan_viewMode');
+    // Sanitize: if stored value is a non-map mode from an old session, reset to 'street'
+    return (stored === 'street' || stored === 'satellite') ? stored : 'street';
+  });
+
   useEffect(() => {
     localStorage.setItem('masterplan_viewMode', viewMode);
   }, [viewMode]);
@@ -505,7 +510,7 @@ export default function Editor() {
 
         {/* Left Panels */}
         <div 
-          className="relative flex-shrink-0 flex flex-col h-full border-r border-slate-200 bg-white z-10"
+          className="relative flex-shrink-0 flex flex-col h-full border-r border-slate-200 bg-white z-10 sidebar-container"
           style={{ width: leftCollapsed ? 48 : leftWidth }}
         >
           {/* Collapse toggle — integrated into top of sidebar */}
@@ -523,7 +528,6 @@ export default function Editor() {
             /* Collapsed: icon-only strip */
             <div className="flex flex-col items-center gap-1 pt-2">
               {[
-                { icon: MousePointer, label: 'Select', tool: 'SELECT' },
                 { icon: BoxSelect, label: 'Cluster Select', tool: 'CLUSTER_SELECT' },
                 { icon: Square, label: 'Zone', tool: 'ZONE' },
                 { icon: MapPin, label: 'Label', tool: 'LABEL' },
@@ -702,37 +706,12 @@ export default function Editor() {
             </div>
           )}
 
-          {/* Collapsible Dropdown Legend Overlay - fixed to the bottom left */}
-          {meta.showNumberLegend && legendMapping.length > 0 && (
-            <div className={`absolute bottom-6 left-6 z-20 bg-white/95 backdrop-blur-md rounded-xl shadow-2xl border border-slate-200 pointer-events-auto transition-all duration-300 ${isLegendExpanded ? 'min-w-[210px]' : 'min-w-[160px]'} overflow-hidden flex flex-col`}>
-              {/* Toggle / Header */}
-              <button
-                type="button"
-                onClick={() => setIsLegendExpanded(v => !v)}
-                className={`flex items-center justify-between ${isLegendExpanded ? 'p-3 border-b border-slate-100' : 'py-1.5 px-2.5'} hover:bg-slate-50 transition-all w-full text-left font-black ${isLegendExpanded ? 'text-[9.5px]' : 'text-[9px]'} text-slate-800 uppercase tracking-widest cursor-pointer outline-none`}
-              >
-                <span className="flex items-center gap-1.5">📖 Sitemap Legend</span>
-                <ChevronDown size={isLegendExpanded ? 13 : 11} className={`transform transition-transform ${isLegendExpanded ? 'rotate-180' : ''}`} />
-              </button>
-              {isLegendExpanded && (
-                <div className="p-3.5 space-y-2.5 max-h-[220px] overflow-y-auto">
-                  {legendMapping.map(item => (
-                    <div key={item.number} className="flex items-center gap-3">
-                      <div className="w-5 h-5 rounded-full border border-slate-300 bg-slate-50 flex items-center justify-center text-[10px] font-bold text-slate-855 shadow-sm shrink-0">
-                        {item.number}
-                      </div>
-                      <span className="text-[11px] font-bold text-slate-600 leading-tight">{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+
         </div>
 
         {/* Right Inspector Panel */}
         <div 
-          className="relative flex-shrink-0 flex flex-col h-full border-l border-slate-200 bg-white z-10"
+          className="relative flex-shrink-0 flex flex-col h-full border-l border-slate-200 bg-white z-10 sidebar-container"
           style={{ width: rightCollapsed ? 48 : rightWidth }}
         >
           {/* Collapse toggle */}

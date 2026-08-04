@@ -1411,18 +1411,20 @@ export default function PropertiesPanel() {
                                   <rect x={x0} y={y0} width={drawW} height={drawH} fill={color} stroke="#0f172a" strokeWidth="1.2" />
                                 )}
 
-                                {/* Gable / Hip Roof ridge & hip visual overlay */}
+                                {/* Gable Roof ridge & gable end wall visual overlay */}
                                 {drawW >= drawH ? (
                                   <>
-                                    <line x1={x0 + drawH/4} y1={cy} x2={x1 - drawH/4} y2={cy} stroke="rgba(15,23,42,0.45)" strokeWidth="1.2" />
-                                    <path d={`M ${x0} ${y0} L ${x0+drawH/4} ${cy} M ${x0} ${y1} L ${x0+drawH/4} ${cy} M ${x1} ${y0} L ${x1-drawH/4} ${cy} M ${x1} ${y1} L ${x1-drawH/4} ${cy}`} stroke="rgba(15,23,42,0.3)" strokeWidth="1" />
-                                    <polygon points={`${x0} ${y1} ${x1} ${y1} ${x1-drawH/4} ${cy} ${x0+drawH/4} ${cy}`} fill="rgba(0,0,0,0.06)" />
+                                    <line x1={x0} y1={cy} x2={x1} y2={cy} stroke="rgba(15,23,42,0.45)" strokeWidth="1.2" />
+                                    <line x1={x0} y1={y0} x2={x0} y2={y1} stroke="rgba(15,23,42,0.25)" strokeWidth="0.8" />
+                                    <line x1={x1} y1={y0} x2={x1} y2={y1} stroke="rgba(15,23,42,0.25)" strokeWidth="0.8" />
+                                    <polygon points={`${x0} ${y1} ${x1} ${y1} ${x1} ${cy} ${x0} ${cy}`} fill="rgba(0,0,0,0.06)" />
                                   </>
                                 ) : (
                                   <>
-                                    <line x1={cx} y1={y0 + drawW/4} x2={cx} y2={y1 - drawW/4} stroke="rgba(15,23,42,0.45)" strokeWidth="1.2" />
-                                    <path d={`M ${x0} ${y0} L ${cx} ${y0+drawW/4} M ${x1} ${y0} L ${cx} ${y0+drawW/4} M ${x0} ${y1} L ${cx} ${y1-drawW/4} M ${x1} ${y1} L ${cx} ${y1-drawW/4}`} stroke="rgba(15,23,42,0.3)" strokeWidth="1" />
-                                    <polygon points={`${x1} ${y0} ${x1} ${y1} ${cx} ${y1-drawW/4} ${cx} ${y0+drawW/4}`} fill="rgba(0,0,0,0.06)" />
+                                    <line x1={cx} y1={y0} x2={cx} y2={y1} stroke="rgba(15,23,42,0.45)" strokeWidth="1.2" />
+                                    <line x1={x0} y1={y0} x2={x1} y2={y0} stroke="rgba(15,23,42,0.25)" strokeWidth="0.8" />
+                                    <line x1={x0} y1={y1} x2={x1} y2={y1} stroke="rgba(15,23,42,0.25)" strokeWidth="0.8" />
+                                    <polygon points={`${x1} ${y0} ${x1} ${y1} ${cx} ${y1} ${cx} ${y0}`} fill="rgba(0,0,0,0.06)" />
                                   </>
                                 )}
 

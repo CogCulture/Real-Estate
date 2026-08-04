@@ -106,14 +106,38 @@ def build_zone(zone):
 
 def add_roof(building_obj, w, h, cx, cy, height, angle_rad):
     """Add a simple sloped roof on low-rise buildings"""
-    verts = [
-        (-w/2, -h/2, height),
-        (w/2, -h/2, height),
-        (w/2, h/2, height),
-        (-w/2, h/2, height),
-        (0, 0, height + 2.5),
-    ]
-    faces = [(0,1,4), (1,2,4), (2,3,4), (3,0,4), (0,1,2,3)]
+    if w >= h:
+        verts = [
+            (-w/2, -h/2, height),
+            (w/2, -h/2, height),
+            (w/2, h/2, height),
+            (-w/2, h/2, height),
+            (-w/2, 0, height + 2.5),
+            (w/2, 0, height + 2.5),
+        ]
+        faces = [
+            (0, 1, 5, 4), # South slope
+            (2, 3, 4, 5), # North slope
+            (0, 4, 3),    # West gable
+            (1, 2, 5),    # East gable
+            (0, 3, 2, 1), # Bottom
+        ]
+    else:
+        verts = [
+            (-w/2, -h/2, height),
+            (w/2, -h/2, height),
+            (w/2, h/2, height),
+            (-w/2, h/2, height),
+            (0, -h/2, height + 2.5),
+            (0, h/2, height + 2.5),
+        ]
+        faces = [
+            (0, 4, 5, 3), # West slope
+            (1, 2, 5, 4), # East slope
+            (0, 1, 4),    # South gable
+            (3, 5, 2),    # North gable
+            (0, 3, 2, 1), # Bottom
+        ]
     mesh = bpy.data.meshes.new("Roof")
     obj = bpy.data.objects.new("Roof", mesh)
     bpy.context.collection.objects.link(obj)

@@ -186,12 +186,24 @@ const getClippedZonePolygons = (zone, roads, scale) => {
     });
 
     const polys = [];
-    if (zonePoly.geometry.type === 'Polygon') {
-      polys.push(zonePoly.geometry.coordinates);
-    } else if (zonePoly.geometry.type === 'MultiPolygon') {
-      zonePoly.geometry.coordinates.forEach(coords => {
-        polys.push(coords);
-      });
+    if (zonePoly && zonePoly.geometry) {
+      if (zonePoly.geometry.type === 'Polygon') {
+        if (zonePoly.geometry.coordinates && zonePoly.geometry.coordinates.length > 0 && zonePoly.geometry.coordinates[0].length > 0) {
+          polys.push(zonePoly.geometry.coordinates);
+        }
+      } else if (zonePoly.geometry.type === 'MultiPolygon') {
+        zonePoly.geometry.coordinates.forEach(coords => {
+          if (coords && coords.length > 0 && coords[0].length > 0) {
+            polys.push(coords);
+          }
+        });
+      }
+    }
+    
+    if (polys.length === 0) {
+      // Fallback to original unclipped points so the zone never disappears
+      const originalPx = zonePts.map(p => [p[0] * scale, p[1] * scale]);
+      return [[originalPx]];
     }
     
     // Convert back to pixels
@@ -335,7 +347,7 @@ const getClippedZonePoints = (zone, roads, scale) => {
 };
 
 
-export default function Canvas2D({ width, height, viewMode = 'grass', showDimensions = true }) {
+export default function Canvas2D({ width, height, viewMode = 'street', showDimensions = true }) {
   const {
     zones,
     roads,
@@ -448,7 +460,7 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
   const draggedClusterNodesRef = useRef(null);
   const canvasRef = useRef(null);
   const contextMenuRef = useRef(null);
-  const mapContainerRef = useRef(null);
+  const [mapContainerEl, setMapContainerEl] = useState(null);
   const mapInstanceRef = useRef(null);
   const tileLayerRef = useRef(null);
   const baseZoomRef = useRef(17);
@@ -635,7 +647,7 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
 
   const generateShapePoints = (shape, cx, cy, w, h) => {
     const pts = [];
-    const isCurved = ['organic', 'fluid_organic', 'serpentine_wave', 'crescent', 'bowtie_geometric', 'circular', 'oval'].includes(shape);
+    const isCurved = ['organic', 'fluid_organic', 'serpentine_wave', 'crescent', 'bowtie_geometric', 'circular', 'oval', 'pebble', 'kidney', 'teardrop', 'courtyard_curved'].includes(shape);
     const steps = isCurved ? 80 : 36;
     if (shape === 'triangular') {
       return [
@@ -1258,7 +1270,7 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
 
   // 1. Leaflet Background Map initialization and bounds sync
   useEffect(() => {
-    if (!hasMapMode) {
+    if (!hasMapMode || !mapContainerEl) {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -1266,8 +1278,6 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
       }
       return;
     }
-
-    if (!mapContainerRef.current) return;
 
     // Destroy existing map if any
     if (mapInstanceRef.current) {
@@ -1283,6 +1293,7 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
 
     if (currentProject && currentProject.boundary_geojson) {
       try {
+        console.log("Canvas2D map init: Parsing boundary_geojson", currentProject.boundary_geojson);
         const geojson = JSON.parse(currentProject.boundary_geojson);
         if (geojson && geojson.geometry && geojson.geometry.coordinates) {
           const coords = geojson.geometry.coordinates[0];
@@ -1310,52 +1321,59 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
             [mapLatMin, mapMinLng],
             [mapMaxLat, mapLngMax]
           ];
+          console.log("Canvas2D map init: calculated bounds", bounds, "center", centerLat, centerLng);
         }
       } catch (err) {
         console.error("Error parsing boundary geojson in Canvas2D map init:", err);
       }
-    }
-
-    // Initialize Leaflet Map
-    const map = L.map(mapContainerRef.current, {
-      dragging: false,
-      zoomControl: false,
-      scrollWheelZoom: false,
-      doubleClickZoom: false,
-      boxZoom: false,
-      keyboard: false,
-      attributionControl: false
-    });
-
-    if (bounds) {
-      map.fitBounds(bounds, { padding: [0, 0] });
     } else {
-      map.setView([centerLat, centerLng], 17);
+      console.warn("Canvas2D map init: no currentProject or boundary_geojson found!");
     }
 
-    const persistedStreetUrl = localStorage.getItem('active_basemap_street') || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-    const tileUrl = viewMode === 'satellite'
-      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-      : persistedStreetUrl;
+    try {
+      // Initialize Leaflet Map
+      const map = L.map(mapContainerEl, {
+        dragging: false,
+        zoomControl: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        attributionControl: false
+      });
+      console.log("Canvas2D map init: Leaflet map instantiated successfully on", mapContainerEl);
 
-    tileLayerRef.current = L.tileLayer(tileUrl, {
-      detectRetina: true,
-      maxNativeZoom: 19,
-      maxZoom: 22
-    }).addTo(map);
-    mapInstanceRef.current = map;
-    const setupInitialZoom = () => {
-      const z = map.getZoom();
-      if (z !== undefined) {
-        baseZoomRef.current = z;
-        setLeafletZoom(z);
+      if (bounds) {
+        map.fitBounds(bounds, { padding: [0, 0] });
+      } else {
+        map.setView([centerLat, centerLng], 17);
       }
-    };
-    map.once('zoomend moveend', setupInitialZoom);
-    map.on('zoomend', () => {
-      setLeafletZoom(map.getZoom());
-    });
-    setTimeout(setupInitialZoom, 150);
+      console.log("Canvas2D map init: view/bounds set. Current zoom is:", map.getZoom());
+
+      const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+      tileLayerRef.current = L.tileLayer(tileUrl, {
+        maxNativeZoom: 19,
+        maxZoom: 22
+      }).addTo(map);
+      console.log("Canvas2D map init: TileLayer added successfully");
+      mapInstanceRef.current = map;
+
+      const setupInitialZoom = () => {
+        const z = map.getZoom();
+        if (z !== undefined) {
+          baseZoomRef.current = z;
+          setLeafletZoom(z);
+        }
+      };
+      map.once('zoomend moveend', setupInitialZoom);
+      map.on('zoomend', () => {
+        setLeafletZoom(map.getZoom());
+      });
+      setTimeout(setupInitialZoom, 150);
+    } catch (err) {
+      console.error("Canvas2D map init: Error initializing Leaflet map:", err);
+    }
 
     // Trigger invalidateSize to ensure correct tile loading
     setTimeout(() => {
@@ -1371,16 +1389,13 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
         tileLayerRef.current = null;
       }
     };
-  }, [hasMapMode, width, height, currentProject, scale]);
+  }, [hasMapMode, width, height, currentProject, scale, mapContainerEl]);
 
   // 2. Swappable Tile Layer URL (Updates instantly without map rebuilding!)
   useEffect(() => {
     if (!hasMapMode || !mapInstanceRef.current) return;
 
-    const persistedStreetUrl = localStorage.getItem('active_basemap_street') || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-    const tileUrl = viewMode === 'satellite'
-      ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-      : persistedStreetUrl;
+    const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
     if (tileLayerRef.current) {
       tileLayerRef.current.setUrl(tileUrl);
@@ -1394,7 +1409,12 @@ export default function Canvas2D({ width, height, viewMode = 'grass', showDimens
       try {
         const geojson = JSON.parse(currentProject.boundary_geojson);
         if (geojson && geojson.geometry && geojson.geometry.coordinates) {
-          const coords = geojson.geometry.coordinates[0];
+          let coords = geojson.geometry.coordinates[0] || [];
+          if (coords.length > 1 && 
+              coords[0][0] === coords[coords.length - 1][0] && 
+              coords[0][1] === coords[coords.length - 1][1]) {
+            coords = coords.slice(0, -1);
+          }
           const pts = coords.map(c => ({ lat: c[1], lng: c[0] }));
           
           const lats = pts.map(p => p.lat);
@@ -1565,7 +1585,12 @@ out skel qt;`;
         const geojson = JSON.parse(currentProject.boundary_geojson);
         if (!geojson || !geojson.geometry || !geojson.geometry.coordinates) return [];
         
-        const coords = geojson.geometry.coordinates[0];
+        let coords = geojson.geometry.coordinates[0] || [];
+        if (coords.length > 1 && 
+            coords[0][0] === coords[coords.length - 1][0] && 
+            coords[0][1] === coords[coords.length - 1][1]) {
+          coords = coords.slice(0, -1);
+        }
         const pts = coords.map(c => ({ lat: c[1], lng: c[0] }));
         const lats = pts.map(p => p.lat);
         const lngs = pts.map(p => p.lng);
@@ -1581,13 +1606,20 @@ out skel qt;`;
         });
 
         const results = [];
-        let accumulatedOffsetM = 0; // Start flush with boundary
+        const frontM  = Math.max(0, parseFloat(meta.front_setback_m)  || 6.0);
+        const rearM   = Math.max(0, parseFloat(meta.rear_setback_m)   || 6.0);
+        const sideM   = Math.max(0, parseFloat(meta.side_setback_m)   || 3.0);
+        const maxSetbackM = Math.max(frontM, rearM, sideM);
+        let accumulatedOffsetM = maxSetbackM; // Start placing after the setback region
 
-        for (const type of layersArr) {
-          let widthM = 0;
-          if (type === 'road') widthM = 6; // Standard primary road
-          else if (type === 'trees') widthM = 4.2;
-          else if (type === 'path') widthM = 2; // Standard pedestrian path
+        for (const layer of layersArr) {
+          const type = typeof layer === 'string' ? layer : layer.type;
+          let widthM = typeof layer === 'object' && layer.width !== undefined ? layer.width : 0;
+          if (widthM === 0) {
+            if (type === 'road') widthM = 6;
+            else if (type === 'trees') widthM = 4.2;
+            else if (type === 'path') widthM = 2;
+          }
 
           const centerOffsetM = accumulatedOffsetM + (widthM / 2);
           
@@ -1647,32 +1679,26 @@ out skel qt;`;
           const ptsPx = geom.insetPtsPx;
           const ptsM = geom.insetPtsM;
           
-          // Break the boundary road into small individual selectable segments
-          for (let i = 0; i < ptsPx.length - 1; i++) {
-            const segmentPx = [ptsPx[i], ptsPx[i + 1]];
-            const segmentM = [ptsM[i], ptsM[i + 1]];
-            
-            const distPx = Math.hypot(segmentPx[1][0] - segmentPx[0][0], segmentPx[1][1] - segmentPx[0][1]);
-            if (distPx < 1) continue;
-
+          // Create a single continuous closed loop road/path
+          if (ptsPx.length > 1) {
             newRoads.push({
               id: `road_${Date.now()}_${Math.random().toString(36).substr(2,5)}`,
               type: roadType,
-              label: isRoad ? `Boundary Road Segment` : `Boundary Path Segment`,
+              label: isRoad ? `Boundary Road` : `Boundary Path`,
               width_m: geom.widthM,
               width_px: geom.widthM * scale,
-              closed: false,
-              points_px: segmentPx,
-              points_m: segmentM,
+              closed: ptsPx.length >= 3,
+              points_px: ptsPx,
+              points_m: ptsM,
               color: roadColor,
-              sharp_corners: true,
+              sharp_corners: false,
               tension: 0,
               has_median: isRoad,
               median_width_m: isRoad ? 2 : 0
             });
           }
         } else if (geom.type === 'trees') {
-          const intervalPx = 15 * scale;
+          const intervalPx = 6 * scale;
           let leftOver = 0;
           const pts = geom.insetPtsPx;
           const loopPts = [...pts, pts[0]]; // close the loop
@@ -1841,6 +1867,7 @@ out skel qt;`;
   const wheelFlushTimerRef = useRef(null);
   const liveScaleRef = useRef(1);
   const livePosRef = useRef({ x: 0, y: 0 });
+  const isPanningRef = useRef(false);
   const prevWidthRef = useRef(null);
   const dragCasingNodeRef = useRef(null);
   const transformCasingNodeRef = useRef(null);
@@ -2654,6 +2681,9 @@ out skel qt;`;
     
     setMousePos({ x: snappedX, y: snappedY });
     
+    // Skip tree paint and road preview updates while panning for perf
+    if (isPanningRef.current) return;
+    
     // Handle tree painting if we are painting
     if (isPaintingTrees && meta.activePlacementCategory === 'tree') {
       setPaintedTreePaths(prev => {
@@ -2866,6 +2896,16 @@ out skel qt;`;
       const heightM = preset.heightM;
       const sizePxW = widthM * scale;
       const sizePxH = heightM * scale;
+      const pointsCheck = [
+        [snappedX - sizePxW / 2, snappedY - sizePxH / 2],
+        [snappedX + sizePxW / 2, snappedY - sizePxH / 2],
+        [snappedX + sizePxW / 2, snappedY + sizePxH / 2],
+        [snappedX - sizePxW / 2, snappedY + sizePxH / 2]
+      ];
+      if (!isInsideSetbackPolygon(pointsCheck)) {
+        alert("Cannot place elements inside the setback region!");
+        return;
+      }
       const newAmenity = {
         id: `amenity_${Date.now()}`,
         type: 'entry_exit',
@@ -2903,6 +2943,16 @@ out skel qt;`;
       const [widthM, heightM] = getDecoSize(variant);
       const widthPx = widthM * scale;
       const heightPx = heightM * scale;
+      const pointsCheck = [
+        [snappedX - widthPx / 2, snappedY - heightPx / 2],
+        [snappedX + widthPx / 2, snappedY - heightPx / 2],
+        [snappedX + widthPx / 2, snappedY + heightPx / 2],
+        [snappedX - widthPx / 2, snappedY + heightPx / 2]
+      ];
+      if (!isInsideSetbackPolygon(pointsCheck)) {
+        alert("Cannot place elements inside the setback region!");
+        return;
+      }
       
       const newAmenity = {
         id: `amenity_${Date.now()}`,
@@ -2939,6 +2989,10 @@ out skel qt;`;
       const heightPx = heightM * scale;
       
       const ptsPx = generateShapePoints(shapeType, snappedX, snappedY, widthPx, heightPx);
+      if (!isInsideSetbackPolygon(ptsPx)) {
+        alert("Cannot place elements inside the setback region!");
+        return;
+      }
       const newAmenity = {
         id: `amenity_${Date.now()}`,
         type: typeStr,
@@ -2972,6 +3026,10 @@ out skel qt;`;
         [snappedX + widthPx / 2, snappedY + heightPx / 2],
         [snappedX - widthPx / 2, snappedY + heightPx / 2]
       ];
+      if (!isInsideSetbackPolygon(pointsPx)) {
+        alert("Cannot place elements inside the setback region!");
+        return;
+      }
       const initialPointsM = pointsPx.map((p) => [pxToM(p[0], scale), pxToM(p[1], scale)]);
       const clippedPointsM = clipZoneGeometryAgainstRoads(initialPointsM, roads);
       const areaSqm = calculatePolygonArea(clippedPointsM);
@@ -3098,6 +3156,16 @@ out skel qt;`;
       const variant = meta.activePlacementVariant || 'tree_single';
       const sizeM = variant === 'tree_row' ? 2.2 : variant === 'tree_cluster' ? 2.0 : 1.6;
       const sizePx = sizeM * scale;
+      const ptsCheck = [
+        [snappedX - sizePx / 2, snappedY - sizePx / 2],
+        [snappedX + sizePx / 2, snappedY - sizePx / 2],
+        [snappedX + sizePx / 2, snappedY + sizePx / 2],
+        [snappedX - sizePx / 2, snappedY + sizePx / 2]
+      ];
+      if (!isInsideSetbackPolygon(ptsCheck)) {
+        alert("Cannot place elements inside the setback region!");
+        return;
+      }
       const newAmenity = {
         id: `amenity_${Date.now()}`,
         type: 'tree',
@@ -3197,33 +3265,87 @@ out skel qt;`;
   };
 
   const handleTransformEnd = (e, zone) => {
+    const node = e.currentTarget;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+    const rotation = node.rotation();
+    const dx = node.x();
+    const dy = node.y();
+    
+    // Reset transformer scaling/rotation properties to prevent cumulative transform bugs
+    node.scaleX(1);
+    node.scaleY(1);
+    node.x(0);
+    node.y(0);
+    node.rotation(0);
+    
+    setDimTooltip(null);
+
+    const originalPtsRaw = getZonePoints(zone);
+    const oldRotRad = (zone.rotation_deg || 0) * Math.PI / 180;
+    const rotRad = rotation * Math.PI / 180;
+
+    const updatedPointsPx = originalPtsRaw.map(([px, py]) => {
+      // 1. Rotate back around (0, 0) to get local coordinates relative to the group origin
+      const lx = px * Math.cos(-oldRotRad) - py * Math.sin(-oldRotRad);
+      const ly = px * Math.sin(-oldRotRad) + py * Math.cos(-oldRotRad);
+      
+      // 2. Apply the scale, rotate by the new angle around (0, 0), and translate by dx, dy
+      const xs = lx * scaleX;
+      const ys = ly * scaleY;
+      const xr = xs * Math.cos(rotRad) - ys * Math.sin(rotRad);
+      const yr = xs * Math.sin(rotRad) + ys * Math.cos(rotRad);
+      return [xr + dx, yr + dy];
+    });
+
+    const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
+    const bbox = getPolygonBoundingBox(updatedPointsPx);
+    const clippedPointsM = clipZoneGeometryAgainstRoads(updatedPointsM, roads);
+    const areaSqm = calculatePolygonArea(clippedPointsM);
+
+    updateZone(zone.id, {
+      points_px: updatedPointsPx,
+      points_m: updatedPointsM,
+      x_px: bbox.minX,
+      y_px: bbox.minY,
+      x_m: pxToM(bbox.minX, scale),
+      y_m: pxToM(bbox.minY, scale),
+      rotation_deg: rotation % 360,
+      'properties.plot_size_sqm': areaSqm
+    });
+  };
+
+  const handleAmenityTransformEnd = (e, amenity) => {
     const node = e.target;
     const dx = node.x();
     const dy = node.y();
     const sx = node.scaleX();
     const sy = node.scaleY();
-    const rotRad = (node.rotation() * Math.PI) / 180;
+    const rotation = node.rotation();
+    const rotRad = (rotation * Math.PI) / 180;
 
     node.scaleX(1);
     node.scaleY(1);
     node.x(0);
     node.y(0);
+    node.rotation(0);
     
     setDimTooltip(null);
 
-    const originalPts = getAmenityPoints(amenity);
+    const originalPtsRaw = getAmenityPoints(amenity);
     const oldRotRad = (amenity.rotation_deg || 0) * Math.PI / 180;
-    const localPts = originalPts.map(([px, py]) => [
-      px * Math.cos(-oldRotRad) - py * Math.sin(-oldRotRad),
-      px * Math.sin(-oldRotRad) + py * Math.cos(-oldRotRad)
-    ]);
 
-    const updatedPointsPx = localPts.map(([px, py]) => {
-      const xs = px * sx;
-      const ys = py * sy;
+    const updatedPointsPx = originalPtsRaw.map(([px, py]) => {
+      // 1. Rotate back around (0, 0) to get local coordinates relative to the group origin
+      const lx = px * Math.cos(-oldRotRad) - py * Math.sin(-oldRotRad);
+      const ly = px * Math.sin(-oldRotRad) + py * Math.cos(-oldRotRad);
+      
+      // 2. Apply the scale, rotate by the new angle around (0, 0), and translate by dx, dy
+      const xs = lx * sx;
+      const ys = ly * sy;
       const xr = xs * Math.cos(rotRad) - ys * Math.sin(rotRad);
       const yr = xs * Math.sin(rotRad) + ys * Math.cos(rotRad);
-      return [snapValue(xr + dx), snapValue(yr + dy)];
+      return [xr + dx, yr + dy];
     });
 
     const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
@@ -3236,7 +3358,11 @@ out skel qt;`;
       y_px: bbox.minY,
       x_m: pxToM(bbox.minX, scale),
       y_m: pxToM(bbox.minY, scale),
-      rotation_deg: node.rotation() % 360
+      width_px: bbox.width,
+      height_px: bbox.height,
+      width_m: pxToM(bbox.width, scale),
+      height_m: pxToM(bbox.height, scale),
+      rotation_deg: rotation % 360
     });
   };
 
@@ -3339,19 +3465,28 @@ out skel qt;`;
   const getInwardOffsetPolygon = (points, offsetPx) => {
     if (isNaN(offsetPx) || offsetPx <= 0) return points;
     const n = points.length / 2;
+    if (n < 3) return points;
+
+    let workPoints = [...points];
+    const isClosed = Math.abs(points[0] - points[(n-1)*2]) < 0.1 && Math.abs(points[1] - points[(n-1)*2+1]) < 0.1;
+    if (isClosed) {
+      workPoints.splice((n-1)*2, 2); // remove last point (2 coordinates)
+    }
+
+    const nWork = workPoints.length / 2;
     const result = [];
 
-    for (let i = 0; i < n; i++) {
-      const x = points[i * 2];
-      const y = points[i * 2 + 1];
+    for (let i = 0; i < nWork; i++) {
+      const x = workPoints[i * 2];
+      const y = workPoints[i * 2 + 1];
 
-      const prevIdx = (i - 1 + n) % n;
-      const px = points[prevIdx * 2];
-      const py = points[prevIdx * 2 + 1];
+      const prevIdx = (i - 1 + nWork) % nWork;
+      const px = workPoints[prevIdx * 2];
+      const py = workPoints[prevIdx * 2 + 1];
 
-      const nextIdx = (i + 1) % n;
-      const nx = points[nextIdx * 2];
-      const ny = points[nextIdx * 2 + 1];
+      const nextIdx = (i + 1) % nWork;
+      const nx = workPoints[nextIdx * 2];
+      const ny = workPoints[nextIdx * 2 + 1];
 
       const dx1 = x - px;
       const dy1 = y - py;
@@ -3413,19 +3548,62 @@ out skel qt;`;
       return Math.abs(area / 2);
     };
 
-    if (getArea(result) > getArea(points)) {
+    let finalResult = result;
+    if (getArea(result) > getArea(workPoints)) {
       const flipped = [];
-      for (let i = 0; i < n; i++) {
-        const x = points[i * 2];
-        const y = points[i * 2 + 1];
+      for (let i = 0; i < nWork; i++) {
+        const x = workPoints[i * 2];
+        const y = workPoints[i * 2 + 1];
         const rx = result[i * 2];
         const ry = result[i * 2 + 1];
         flipped.push(x - (rx - x), y - (ry - y));
       }
-      return flipped;
+      finalResult = flipped;
     }
 
-    return result;
+    if (isClosed) {
+      finalResult.push(finalResult[0], finalResult[1]);
+    }
+
+    return finalResult;
+  };
+
+  const isInsideSetbackPolygon = (ptsPx) => {
+    if (boundaryPoints.length < 6) return true;
+    const frontM  = Math.max(0, parseFloat(meta.front_setback_m)  || 6.0);
+    const rearM   = Math.max(0, parseFloat(meta.rear_setback_m)   || 6.0);
+    const sideM   = Math.max(0, parseFloat(meta.side_setback_m)   || 3.0);
+    const maxSetbackM = Math.max(frontM, rearM, sideM);
+    const s = meta.scale_px_per_m || 2.4;
+    const offsetPx = maxSetbackM * s;
+
+    try {
+      const setbackPts = getInwardOffsetPolygon(boundaryPoints, offsetPx);
+      if (!setbackPts || setbackPts.length < 6) return true;
+
+      const poly = [];
+      for (let i = 0; i < setbackPts.length; i += 2) {
+        poly.push([setbackPts[i], setbackPts[i + 1]]);
+      }
+
+      const isPointInPolygon = (pt, polygon) => {
+        let isInside = false;
+        const n = polygon.length;
+        for (let i = 0, j = n - 1; i < n; j = i++) {
+          const xi = polygon[i][0], yi = polygon[i][1];
+          const xj = polygon[j][0], yj = polygon[j][1];
+          const intersect = ((yi > pt[1]) !== (yj > pt[1]))
+              && (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi);
+          if (intersect) isInside = !isInside;
+        }
+        return isInside;
+      };
+
+      return ptsPx.some(p => isPointInPolygon(p, poly));
+    } catch (err) {
+      console.error("Error in setback check:", err);
+      return true;
+    }
   };
 
   const renderSetbackLines = () => {
@@ -3502,17 +3680,25 @@ out skel qt;`;
       const bearingRad = Math.atan2(outNx, -outNy); // atan2(E, N)
       let bearingDeg = (bearingRad * 180 / Math.PI - northDeg + 360) % 360;
 
-      // Assign side label and setback value based on bearing
-      let sideLabel, setbackM;
+      // Assign side label and setback value based on bearing with support for clockwise rotation offset
+      const baseLabels = ['Rear', 'Side A', 'Front', 'Side B'];
+      const baseSetbacks = [rearM, sideM, frontM, sideM];
+
+      let baseIdx = 0;
       if (bearingDeg < 45 || bearingDeg >= 315) {
-        sideLabel = 'Rear'; setbackM = rearM;         // facing North  → rear
+        baseIdx = 0; // facing North  → rear
       } else if (bearingDeg < 135) {
-        sideLabel = 'Side A'; setbackM = sideM;       // facing East   → right side
+        baseIdx = 1; // facing East   → right side (Side A)
       } else if (bearingDeg < 225) {
-        sideLabel = 'Front'; setbackM = frontM;       // facing South  → front
+        baseIdx = 2; // facing South  → front
       } else {
-        sideLabel = 'Side B'; setbackM = sideM;       // facing West   → left side
+        baseIdx = 3; // facing West   → left side (Side B)
       }
+
+      const rotationOffset = meta.setback_rotation_offset || 0;
+      const finalIdx = (baseIdx + rotationOffset) % 4;
+      const sideLabel = baseLabels[finalIdx];
+      const setbackM = baseSetbacks[finalIdx];
 
       const offsetPx = setbackM * s;
       if (offsetPx <= 0) continue;
@@ -3579,21 +3765,63 @@ out skel qt;`;
         />
       );
 
-      // Side name label (Front / Rear / Side A / Side B)
+      // Side name label pill placed outside the boundary, shifted along the edge to avoid overlap with dimension
+      const ex = (x2 - x1) / edgeLen;
+      const ey = (y2 - y1) / edgeLen;
+      const pillX = mx - nx * 16 - ex * 35;
+      const pillY = my - ny * 16 - ey * 35;
+
+      let edgeAngle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+      if (edgeAngle > 90)  edgeAngle -= 180;
+      if (edgeAngle < -90) edgeAngle += 180;
+
+      let pillFill = "#fee2e2";
+      let pillStroke = "#fca5a5";
+      let pillTextFill = "#b91c1c";
+
+      if (sideLabel === 'Front') {
+        pillFill = "#dbeafe";
+        pillStroke = "#93c5fd";
+        pillTextFill = "#1d4ed8";
+      } else if (sideLabel.includes('Side')) {
+        pillFill = "#fef3c7";
+        pillStroke = "#fcd34d";
+        pillTextFill = "#b45309";
+      }
+
       elements.push(
-        <Text
-          key={`sbg-lbl-${i}`}
-          x={labelX} y={labelY}
-          text={sideLabel}
-          fontSize={7} fontStyle="bold"
-          fill="#ef4444"
-          stroke="#ffffff" strokeWidth={2}
-          fillAfterStrokeEnabled={true}
-          align="center"
-          rotation={textAngle}
-          offsetX={14} offsetY={0}
-          listening={false}
-        />
+        <Group
+          key={`sbg-pill-group-${i}`}
+          x={pillX}
+          y={pillY}
+          rotation={edgeAngle}
+          listening={true}
+          onDblClick={() => {
+            const currentOffset = meta.setback_rotation_offset || 0;
+            setMeta({ setback_rotation_offset: (currentOffset + 1) % 4 });
+          }}
+        >
+          <Rect
+            x={-18}
+            y={-6}
+            width={36}
+            height={12}
+            cornerRadius={4}
+            fill={pillFill}
+            stroke={pillStroke}
+            strokeWidth={1}
+          />
+          <Text
+            x={-18}
+            y={-4.5}
+            width={36}
+            text={sideLabel}
+            fontSize={6.5} // Small enough text
+            fontStyle="bold"
+            fill={pillTextFill}
+            align="center"
+          />
+        </Group>
       );
     }
 
@@ -3666,31 +3894,38 @@ out skel qt;`;
 
       <div style={{ position: 'relative', width, height }}>
         {/* Leaflet background map */}
-        {(viewMode === 'satellite' || viewMode === 'street') && (
+        <div
+          ref={mapWrapperRef}
+          style={{
+            position: 'absolute',
+            top: -height * 2,
+            left: -width * 2,
+            width: width * 5,
+            height: height * 5,
+            zIndex: 0,
+            transform: getMapTransform(stagePos.x, stagePos.y, stageScale),
+            transformOrigin: '0px 0px',
+            willChange: 'transform',
+            opacity: 1,
+            pointerEvents: 'none'
+          }}
+        >
           <div
-            ref={mapWrapperRef}
+            ref={setMapContainerEl}
             style={{
-              position: 'absolute',
-              top: -height * 2,
-              left: -width * 2,
               width: width * 5,
               height: height * 5,
-              zIndex: 0,
-              transform: getMapTransform(stagePos.x, stagePos.y, stageScale),
-              transformOrigin: '0px 0px',
-              willChange: 'transform'
             }}
-          >
-            <div
-              ref={mapContainerRef}
-              style={{
-                width: width * 5,
-                height: height * 5,
-              }}
-            />
-          </div>
-        )}
-        <div style={{ position: 'absolute', top: 0, left: 0, width, height, zIndex: 1, cursor: meta.treeBrushActive ? 'url("data:image/svg+xml;utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23064e3b\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'M14 2h-4v2h8V4a2 2 0 0 0-2-2z\'/%3E%3Cpath d=\'M7 6v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6z\'/%3E%3Cpath d=\'M9 12h.01M15 12h.01M12 15h.01M12 9h.01\'/%3E%3C/svg>") 12 12, crosshair' : activeTool === 'CLUSTER_SELECT' ? 'crosshair' : undefined }}>
+          />
+        </div>
+        <div style={{
+          position: 'absolute', top: 0, left: 0, width, height, zIndex: 1,
+          willChange: 'transform',
+          touchAction: 'none',
+          cursor: meta.treeBrushActive
+            ? 'url("data:image/svg+xml;utf8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%23064e3b\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3E%3Cpath d=\'M14 2h-4v2h8V4a2 2 0 0 0-2-2z\'/%3E%3Cpath d=\'M7 6v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6z\'/%3E%3Cpath d=\'M9 12h.01M15 12h.01M12 15h.01M12 9h.01\'/%3E%3C/svg%3E") 12 12, crosshair'
+            : activeTool === 'CLUSTER_SELECT' ? 'crosshair' : undefined
+        }}>
           <Stage
             ref={stageRef}
             width={width}
@@ -3700,6 +3935,8 @@ out skel qt;`;
             scaleX={stageScale}
             scaleY={stageScale}
             listening={true}
+            perfectDrawEnabled={false}
+            shadowForStrokeEnabled={false}
             draggable={(activeTool === 'SELECT' || activeTool === 'HAND') && !meta.treeBrushActive}
             onContextMenu={(e) => {
               e.evt.preventDefault();
@@ -3710,19 +3947,20 @@ out skel qt;`;
             }}
             onDragStart={(e) => {
               if (e.target === stageRef.current) {
-                // Starting stage pan
+                isPanningRef.current = true;
               }
             }}
             onDragMove={(e) => {
               if (e.target === stageRef.current) {
-                // Imperative update for zero latency
+                // Imperative update for zero latency — use live ref for scale (avoids stale closure)
                 if (mapWrapperRef.current) {
-                  mapWrapperRef.current.style.transform = getMapTransform(e.target.x(), e.target.y(), stageScale);
+                  mapWrapperRef.current.style.transform = getMapTransform(e.target.x(), e.target.y(), liveScaleRef.current);
                 }
               }
             }}
             onDragEnd={(e) => {
               if (e.target === stageRef.current) {
+                isPanningRef.current = false;
                 setStagePos({ x: e.target.x(), y: e.target.y() });
               }
             }}
@@ -3736,10 +3974,10 @@ out skel qt;`;
           >
             {/* Land Boundary Layer */}
             <Layer>
-              {viewMode !== 'satellite' && viewMode !== 'street' && (
+              {(viewMode !== 'satellite' && viewMode !== 'street') && (
                 <Rect x={-4000} y={-4000} width={8000} height={8000} fill="#f1f5f9" listening={false} />
               )}
-              {viewMode !== 'satellite' && viewMode !== 'street' && renderGrid()}
+              {(viewMode !== 'satellite' && viewMode !== 'street') && renderGrid()}
     
               {/* Site Land (No longer draggable independently to stay stuck to map) */}
               <Group
@@ -3937,7 +4175,7 @@ out skel qt;`;
                     strokeWidth={roadWidthPx + (sidewalkW * 2) + 4}
                     lineCap={road.sharp_corners ? "square" : "round"}
                     lineJoin={road.sharp_corners ? "miter" : "round"}
-                    tension={road.sharp_corners ? 0 : 0.4}
+                    tension={road.tension !== undefined ? road.tension : (road.sharp_corners ? 0 : 0.4)}
                     listening={false}
                     closed={road.closed}
                     dash={(isClusterSelected && !isSelected) ? [6, 4] : []}
@@ -3952,7 +4190,7 @@ out skel qt;`;
                     strokeWidth={roadWidthPx}
                     lineCap={road.sharp_corners ? "square" : "round"}
                     lineJoin={road.sharp_corners ? "miter" : "round"}
-                    tension={road.sharp_corners ? 0 : 0.4}
+                    tension={road.tension !== undefined ? road.tension : (road.sharp_corners ? 0 : 0.4)}
                     listening={false}
                     closed={road.closed}
                   />
@@ -3999,6 +4237,7 @@ out skel qt;`;
                 scaleY={1}
                 rotation={0}
                 draggable={activeTool === 'SELECT'}
+                listening={!meta.activePlacementCategory}
                 onContextMenu={(e) => handleContextMenu(e, 'road', road)}
                 onDragStart={(e) => {
                   e.cancelBubble = true;
@@ -4033,13 +4272,15 @@ out skel qt;`;
                     dragCasingNodeRef.current.x(0);
                     dragCasingNodeRef.current.y(0);
                   }
-                  dragCasingNodeRef.current = null;
                   const dx = e.currentTarget.x();
                   const dy = e.currentTarget.y();
                   e.currentTarget.x(0);
                   e.currentTarget.y(0);
 
                   const updatedPointsPx = pts.map(p => [p[0] + dx, p[1] + dy]);
+                  if (!isInsideSetbackPolygon(updatedPointsPx)) {
+                    return; // Reject drag inside setback region
+                  }
                   const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
 
                   updateRoad(road.id, {
@@ -4107,7 +4348,7 @@ out skel qt;`;
                   strokeWidth={roadWidthPx + (sidewalkW * 2)}
                   lineCap={road.sharp_corners ? "square" : "round"}
                   lineJoin={road.sharp_corners ? "miter" : "round"}
-                  tension={road.sharp_corners ? 0 : 0.4}
+                  tension={road.tension !== undefined ? road.tension : (road.sharp_corners ? 0 : 0.4)}
                   listening={true}
                   closed={road.closed}
                 />
@@ -4120,7 +4361,7 @@ out skel qt;`;
                     strokeWidth={Math.max(1, roadWidthPx - 3)}
                     lineCap={road.sharp_corners ? "square" : "round"}
                     lineJoin={road.sharp_corners ? "miter" : "round"}
-                    tension={road.sharp_corners ? 0 : 0.4}
+                    tension={road.tension !== undefined ? road.tension : (road.sharp_corners ? 0 : 0.4)}
                     listening={false}
                     closed={road.closed}
                   />
@@ -4134,7 +4375,7 @@ out skel qt;`;
                         strokeWidth={roadWidthPx + 2}
                         lineCap={road.sharp_corners ? "square" : "round"}
                         lineJoin={road.sharp_corners ? "miter" : "round"}
-                        tension={road.sharp_corners ? 0 : 0.4}
+                        tension={road.tension !== undefined ? road.tension : (road.sharp_corners ? 0 : 0.4)}
                         listening={false}
                         closed={road.closed}
                       />
@@ -4146,7 +4387,7 @@ out skel qt;`;
                       strokeWidth={roadWidthPx}
                       lineCap={road.sharp_corners ? "square" : "round"}
                       lineJoin={road.sharp_corners ? "miter" : "round"}
-                      tension={road.sharp_corners ? 0 : 0.4}
+                      tension={road.tension !== undefined ? road.tension : (road.sharp_corners ? 0 : 0.4)}
                       listening={false}
                       closed={road.closed}
                       sceneFunc={(context, shape) => {
@@ -4168,7 +4409,7 @@ out skel qt;`;
                     dash={[6, 8]}
                     lineCap="butt"
                     lineJoin="round"
-                    tension={road.sharp_corners ? 0 : 0.4}
+                    tension={road.tension !== undefined ? road.tension : (road.sharp_corners ? 0 : 0.4)}
                     listening={false}
                     closed={road.closed}
                   />
@@ -4454,9 +4695,30 @@ out skel qt;`;
         {/* Zones Layer (Architectural Blueprint Style as Polygons) */}
         <Layer>
           {zones.map((zone) => {
-            const originalPts = getZonePoints(zone);
-            const ptsWorld = clippedZonesPoints[zone.id] || originalPts;
+            const originalPtsRaw = getZonePoints(zone);
             const rRad = -(zone.rotation_deg || 0) * Math.PI / 180;
+            const localPtsRaw = originalPtsRaw.map(p => [
+              p[0] * Math.cos(rRad) - p[1] * Math.sin(rRad),
+              p[0] * Math.sin(rRad) + p[1] * Math.cos(rRad)
+            ]);
+            const bboxLocal = getPolygonBoundingBox(localPtsRaw);
+            const wL = bboxLocal.width;
+            const hL = bboxLocal.height;
+            const cxL = bboxLocal.cx;
+            const cyL = bboxLocal.cy;
+            const perfectLocalPts = [
+              [cxL - wL/2, cyL - hL/2],
+              [cxL + wL/2, cyL - hL/2],
+              [cxL + wL/2, cyL + hL/2],
+              [cxL - wL/2, cyL + hL/2]
+            ];
+            const rRadForward = (zone.rotation_deg || 0) * Math.PI / 180;
+            const originalPts = perfectLocalPts.map(p => [
+              p[0] * Math.cos(rRadForward) - p[1] * Math.sin(rRadForward),
+              p[0] * Math.sin(rRadForward) + p[1] * Math.cos(rRadForward)
+            ]);
+
+            const ptsWorld = clippedZonesPoints[zone.id] || originalPts;
             const pts = ptsWorld.map(p => [
               p[0] * Math.cos(rRad) - p[1] * Math.sin(rRad),
               p[0] * Math.sin(rRad) + p[1] * Math.cos(rRad)
@@ -4481,6 +4743,7 @@ out skel qt;`;
                 width={bbox.width}
                 height={bbox.height}
                 draggable={activeTool === 'SELECT'}
+                listening={!meta.activePlacementCategory}
                 onContextMenu={(e) => handleContextMenu(e, 'zone', zone)}
                 onDragStart={(e) => {
                   e.cancelBubble = true;
@@ -4507,6 +4770,9 @@ out skel qt;`;
                   const updates = {};
                   if (zone.points_px && zone.points_px.length > 0) {
                     const updatedPointsPx = zone.points_px.map(p => [p[0] + dx, p[1] + dy]);
+                    if (!isInsideSetbackPolygon(updatedPointsPx)) {
+                      return; // Reject drag inside setback region
+                    }
                     const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
                     const bbox = getPolygonBoundingBox(updatedPointsPx);
                     
@@ -4523,6 +4789,15 @@ out skel qt;`;
                   } else {
                     const newX = zone.x_px + dx;
                     const newY = zone.y_px + dy;
+                    const rectPts = [
+                      [newX, newY],
+                      [newX + (zone.width_px || 0), newY],
+                      [newX + (zone.width_px || 0), newY + (zone.height_px || 0)],
+                      [newX, newY + (zone.height_px || 0)]
+                    ];
+                    if (!isInsideSetbackPolygon(rectPts)) {
+                      return; // Reject drag inside setback region
+                    }
                     updates.x_px = newX;
                     updates.y_px = newY;
                     updates.x_m = pxToM(newX, scale);
@@ -4589,24 +4864,42 @@ out skel qt;`;
                   }
                 }}
               >
+                {/* Clickable bounding box area */}
+                <Rect
+                  x={bbox.minX}
+                  y={bbox.minY}
+                  width={bbox.width}
+                  height={bbox.height}
+                  fill="rgba(0,0,0,0.01)"
+                  listening={activeTool !== 'ERASER'}
+                />
                 {/* Visuals Group (Clipped by clipFunc to keep outside roads) */}
                 <Group
                   clipFunc={(ctx) => {
                     const clippedPolys = getClippedZonePolygons(zone, roads, scale);
+                    const rRad = -(zone.rotation_deg || 0) * Math.PI / 180;
+                    const rotate = (pt) => [
+                      pt[0] * Math.cos(rRad) - pt[1] * Math.sin(rRad),
+                      pt[0] * Math.sin(rRad) + pt[1] * Math.cos(rRad)
+                    ];
                     ctx.beginPath();
                     clippedPolys.forEach(([outerRing, ...holes]) => {
                       if (outerRing && outerRing.length > 0) {
-                        ctx.moveTo(outerRing[0][0], outerRing[0][1]);
+                        const start = rotate(outerRing[0]);
+                        ctx.moveTo(start[0], start[1]);
                         for (let i = 1; i < outerRing.length; i++) {
-                          ctx.lineTo(outerRing[i][0], outerRing[i][1]);
+                          const pt = rotate(outerRing[i]);
+                          ctx.lineTo(pt[0], pt[1]);
                         }
                         ctx.closePath();
                         
                         holes.forEach(hole => {
                           if (hole && hole.length > 0) {
-                            ctx.moveTo(hole[0][0], hole[0][1]);
+                            const hStart = rotate(hole[0]);
+                            ctx.moveTo(hStart[0], hStart[1]);
                             for (let i = 1; i < hole.length; i++) {
-                              ctx.lineTo(hole[i][0], hole[i][1]);
+                              const pt = rotate(hole[i]);
+                              ctx.lineTo(pt[0], pt[1]);
                             }
                             ctx.closePath();
                           }
@@ -4715,16 +5008,49 @@ out skel qt;`;
                       listening={activeTool !== 'ERASER'}
                     />
                   ) : (
-                    <Line
-                      points={flatPts}
-                      closed={true}
-                      fill={zone.color}
-                      opacity={zone.opacity || 0.85}
-                      stroke={(isSelected || isClusterSelected) ? '#4f46e5' : isBuilding ? '#0f172a' : '#374151'}
-                      strokeWidth={(isSelected || isClusterSelected) ? 2.5 : 1.2}
-                      dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
-                      listening={activeTool !== 'ERASER'}
-                    />
+                    <Group>
+                      <Line
+                        points={flatPts}
+                        closed={true}
+                        fill={zone.color}
+                        opacity={zone.opacity || 0.85}
+                        stroke={(isSelected || isClusterSelected) ? '#4f46e5' : isBuilding ? '#0f172a' : '#374151'}
+                        strokeWidth={(isSelected || isClusterSelected) ? 2.5 : 1.2}
+                        dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
+                        listening={activeTool !== 'ERASER'}
+                      />
+                      {isBuilding && (() => {
+                        const w = bbox.width;
+                        const h = bbox.height;
+                        const x0 = bbox.minX;
+                        const y0 = bbox.minY;
+                        const x1 = bbox.maxX;
+                        const y1 = bbox.maxY;
+                        const cx = bbox.cx;
+                        const cy = bbox.cy;
+
+                        // Design 1: Gable Roof (Forced for all buildings)
+                        if (w >= h) {
+                          return (
+                            <Group listening={false}>
+                              <Line points={[x0, cy, x1, cy]} stroke="rgba(15,23,42,0.45)" strokeWidth={1.2} />
+                              <Line points={[x0, y0, x0, y1]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                              <Line points={[x1, y0, x1, y1]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                              <Line points={[x0, y1, x1, y1, x1, cy, x0, cy]} fill="rgba(0,0,0,0.06)" closed={true} />
+                            </Group>
+                          );
+                        } else {
+                          return (
+                            <Group listening={false}>
+                              <Line points={[cx, y0, cx, y1]} stroke="rgba(15,23,42,0.45)" strokeWidth={1.2} />
+                              <Line points={[x0, y0, x1, y0]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                              <Line points={[x0, y1, x1, y1]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                              <Line points={[x1, y0, x1, y1, cx, y1, cx, y0]} fill="rgba(0,0,0,0.06)" closed={true} />
+                            </Group>
+                          );
+                        }
+                      })()}
+                    </Group>
                   )}
 
                   {/* Inside Block Size Label */}
@@ -4745,6 +5071,11 @@ out skel qt;`;
                     const clippedPtsM = (clippedZonesPoints[zone.id] || originalPts).map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
                     const areaSqm = calculatePolygonArea(clippedPtsM);
                     const labelText = `${zone.label || 'Zone'}\n(${zone.type.toUpperCase()})\n${zone.floors ? zone.floors + ' Floors' : ''}\n${Math.round(areaSqm).toLocaleString()} m²`;
+                    const lines = labelText.split('\n');
+                    const maxChars = Math.max(...lines.map(line => line.length));
+                    const baseFs = 10;
+                    let fs = Math.min(baseFs, bbox.width / (maxChars * 0.58), bbox.height / (lines.length * 1.25));
+                    fs = Math.max(4, fs);
                     return (
                       <Text
                         x={bbox.minX}
@@ -4752,11 +5083,12 @@ out skel qt;`;
                         width={bbox.width}
                         height={bbox.height}
                         text={labelText}
-                        fontSize={9}
+                        fontSize={fs}
                         fontStyle="bold"
                         fill="#0f172a"
                         align="center"
                         verticalAlign="middle"
+                        wrap="none"
                         listening={false}
                       />
                     );
@@ -4764,166 +5096,35 @@ out skel qt;`;
                 </Group>
 
 
-                {/* Draggable Anchors for Reshaping */}
-                {isSelected && originalPts.map((pt, idx) => (
-                  <Circle
-                    key={`zone-anchor-${zone.id}-${idx}`}
-                    x={pt[0]}
-                    y={pt[1]}
-                    radius={4.5}
-                    fill="#4f46e5"
-                    stroke="#ffffff"
-                    strokeWidth={1.5}
-                    draggable={activeTool === 'SELECT'}
-                    onDragStart={(e) => {
-                      e.cancelBubble = true;
-                    }}
-                    onDragMove={(e) => {
-                      e.cancelBubble = true;
-                      const newX = snapValue(e.target.x());
-                      const newY = snapValue(e.target.y());
-                      e.target.x(newX);
-                      e.target.y(newY);
 
-                      const updatedPointsPx = [...originalPts];
-                      updatedPointsPx[idx] = [newX, newY];
-                      const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
-                      const areaSqm = calculatePolygonArea(updatedPointsM);
-
-                      updateZone(zone.id, {
-                        points_px: updatedPointsPx,
-                        points_m: updatedPointsM,
-                        'properties.plot_size_sqm': areaSqm
-                      });
-                    }}
-                    onDragEnd={(e) => {
-                      e.cancelBubble = true;
-                      const bbox = getPolygonBoundingBox(zone.points_px || originalPts);
-                      const currentPointsM = (zone.points_px || originalPts).map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
-                      const clippedPointsM = clipZoneGeometryAgainstRoads(currentPointsM, roads);
-                      const areaSqm = calculatePolygonArea(clippedPointsM);
-                      
-                      updateZone(zone.id, {
-                        x_px: bbox.minX,
-                        y_px: bbox.minY,
-                        width_px: bbox.width,
-                        height_px: bbox.height,
-                        x_m: pxToM(bbox.minX, scale),
-                        y_m: pxToM(bbox.minY, scale),
-                        width_m: pxToM(bbox.width, scale),
-                        height_m: pxToM(bbox.height, scale),
-                        'properties.plot_size_sqm': areaSqm
-                      });
-                    }}
-                  />
-                ))}
-
-                {/* Custom Rotator Handle on Top of selected block */}
-                {isSelected && (() => {
-                  const handleX = originalBbox.cx;
-                  const handleY = originalBbox.minY - 25;
-                  return (
-                    <Group key={`rotator-group-${zone.id}`}>
-                      <Line
-                        points={[originalBbox.cx, originalBbox.minY, handleX, handleY]}
-                        stroke="#4f46e5"
-                        strokeWidth={1.5}
-                        dash={[4, 2]}
-                      />
-                      <Group
-                        x={handleX}
-                        y={handleY}
-                        draggable={true}
-                        onDragStart={(e) => {
-                          e.cancelBubble = true;
-                          rotationStartPointsRef.current = [...originalPts];
-                          rotationCenterRef.current = { x: originalBbox.cx, y: originalBbox.cy };
-                          const pos = stageRef.current.getRelativePointerPosition();
-                          rotationStartAngleRef.current = Math.atan2(
-                            pos.y - originalBbox.cy,
-                            pos.x - originalBbox.cx
-                          );
-                        }}
-                        onDragMove={(e) => {
-                          e.cancelBubble = true;
-                          const pos = stageRef.current.getRelativePointerPosition();
-                          const currentAngle = Math.atan2(
-                            pos.y - rotationCenterRef.current.y,
-                            pos.x - rotationCenterRef.current.x
-                          );
-                          const deltaRad = currentAngle - rotationStartAngleRef.current;
-                          
-                          const updatedPointsPx = rotationStartPointsRef.current.map(p => 
-                            rotatePoint(p[0], p[1], rotationCenterRef.current.x, rotationCenterRef.current.y, deltaRad)
-                          );
-                          const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
-                          const areaSqm = calculatePolygonArea(updatedPointsM);
-                          
-                          const newRotation = ((zone.rotation_deg || 0) + (deltaRad * 180 / Math.PI)) % 360;
-
-                          updateZone(zone.id, {
-                            points_px: updatedPointsPx,
-                            points_m: updatedPointsM,
-                            rotation_deg: newRotation,
-                            'properties.plot_size_sqm': areaSqm
-                          });
-                        }}
-                        onDragEnd={(e) => {
-                          e.cancelBubble = true;
-                          const clippedPointsM = clipZoneGeometryAgainstRoads(zone.points_m, roads);
-                          const areaSqm = calculatePolygonArea(clippedPointsM);
-                          
-                          updateZone(zone.id, {
-                            'properties.plot_size_sqm': areaSqm
-                          });
-                        }}
-                        onMouseEnter={(e) => {
-                          const stage = e.target.getStage();
-                          if (stage) stage.container().style.cursor = 'crosshair';
-                        }}
-                        onMouseLeave={(e) => {
-                          const stage = e.target.getStage();
-                          if (stage) resetCursor(stage);
-                        }}
-                      >
-                        <Circle
-                          x={0}
-                          y={0}
-                          radius={10}
-                          fill="#ffffff"
-                          stroke="#4f46e5"
-                          strokeWidth={1.5}
-                          shadowColor="rgba(0,0,0,0.3)"
-                          shadowBlur={4}
-                          shadowOffset={{ x: 0, y: 2 }}
-                          shadowOpacity={0.5}
-                        />
-                        <Path
-                          data="M9 0a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L9-4 M9-9v5H4"
-                          x={0}
-                          y={0}
-                          stroke="#4f46e5"
-                          strokeWidth={1.5}
-                          lineCap="round"
-                          lineJoin="round"
-                          scale={{ x: 0.55, y: 0.55 }}
-                        />
-                      </Group>
-                    </Group>
-                  );
-                })()}
               </Group>
             );
           })}
 
           {/* Amenities Layer as Polygons */}
           {filteredAmenities && filteredAmenities.map((amenity) => {
-            const ptsWorld = getAmenityPoints(amenity);
+            const originalPtsRaw = getAmenityPoints(amenity);
             const rRad = -(amenity.rotation_deg || 0) * Math.PI / 180;
-            const pts = ptsWorld.map(p => [
-              p[0] * Math.cos(rRad) - p[1] * Math.sin(rRad),
-              p[0] * Math.sin(rRad) + p[1] * Math.cos(rRad)
-            ]);
+            const localPtsRaw = originalPtsRaw.map(p => [
+               p[0] * Math.cos(rRad) - p[1] * Math.sin(rRad),
+               p[0] * Math.sin(rRad) + p[1] * Math.cos(rRad)
+             ]);
+             const bboxLocal = getPolygonBoundingBox(localPtsRaw);
+             const wL = bboxLocal.width;
+             const hL = bboxLocal.height;
+             const cxL = bboxLocal.cx;
+             const cyL = bboxLocal.cy;
+             const perfectLocalPts = [
+               [cxL - wL/2, cyL - hL/2],
+               [cxL + wL/2, cyL - hL/2],
+               [cxL + wL/2, cyL + hL/2],
+               [cxL - wL/2, cyL + hL/2]
+             ];
+             const rRadForward = (amenity.rotation_deg || 0) * Math.PI / 180;
+             const pts = perfectLocalPts.map(p => [
+               p[0] * Math.cos(rRadForward) - p[1] * Math.sin(rRadForward),
+               p[0] * Math.sin(rRadForward) + p[1] * Math.cos(rRadForward)
+             ]);
             const flatPts = pts.flat();
             if (flatPts.length === 0 || flatPts.some(v => typeof v !== 'number' || !Number.isFinite(v))) return null;
             const bbox = getPolygonBoundingBox(pts);
@@ -4933,7 +5134,7 @@ out skel qt;`;
             const isWater = amenity.type === 'water_body' || amenity.type === 'pool';
             const isLawnOrPark = ['lawn', 'park', 'garden', 'green'].includes(amenity.type);
             const isDecoration = amenity.type === 'decoration';
-            const isSpecialPoint = amenity.type === 'tree' || amenity.type === 'entry_exit';
+            const isSpecialPoint = amenity.type === 'tree' || amenity.type === 'tree_cluster' || amenity.type === 'entry_exit';
             const accessTexture = assets ? assets[getAccessTextureKey(amenity.access_variant)] : null;
             const accessLabel = amenity.access_variant === 'access_large'
               ? 'GRAND GATE'
@@ -4957,6 +5158,7 @@ out skel qt;`;
                 width={bbox.width}
                 height={bbox.height}
                 draggable={activeTool === 'SELECT'}
+                listening={!meta.activePlacementCategory}
                 onContextMenu={(e) => handleContextMenu(e, 'amenity', amenity)}
                 onDragStart={(e) => {
                   e.cancelBubble = true;
@@ -4981,6 +5183,9 @@ out skel qt;`;
                   e.currentTarget.y(0);
                   
                   const updatedPointsPx = pts.map(p => [p[0] + dx, p[1] + dy]);
+                  if (!isInsideSetbackPolygon(updatedPointsPx)) {
+                    return; // Reject drag inside setback region
+                  }
                   const updatedPointsM = updatedPointsPx.map(p => [pxToM(p[0], scale), pxToM(p[1], scale)]);
                   
                   updateAmenity(amenity.id, {
@@ -5013,6 +5218,15 @@ out skel qt;`;
                   }
                 }}
               >
+                {/* Clickable bounding box area */}
+                <Rect
+                  x={bbox.minX}
+                  y={bbox.minY}
+                  width={bbox.width}
+                  height={bbox.height}
+                  fill="rgba(0,0,0,0.01)"
+                  listening={activeTool !== 'ERASER'}
+                />
                 {/* Shadow */}
                 {!isSpecialPoint && ['amenity', 'institutional', 'parking'].includes(amenity.type) && (
                   <Line
@@ -5426,7 +5640,7 @@ out skel qt;`;
                       strokeWidth={1.5}
                       lineJoin="round"
                       lineCap="round"
-                      tension={['organic', 'fluid_organic', 'serpentine_wave', 'crescent', 'bowtie_geometric', 'circular', 'oval'].includes(amenity.shape) ? 0.35 : 0}
+                      tension={['organic', 'fluid_organic', 'serpentine_wave', 'crescent', 'bowtie_geometric', 'circular', 'oval', 'pebble', 'kidney', 'teardrop', 'courtyard_curved'].includes(amenity.shape) ? 0.35 : 0}
                       visible={!isSpecialPoint}
                       listening={activeTool !== 'ERASER'}
                     />
@@ -5481,10 +5695,45 @@ out skel qt;`;
                     stroke={(isSelected || isClusterSelected) ? "#4f46e5" : (amenity.type === 'tree_cluster' ? 'transparent' : "#0f172a")}
                     strokeWidth={(isSelected || isClusterSelected) ? 2 : 1}
                     dash={(isClusterSelected && !isSelected) ? [4, 4] : []}
+                    lineJoin="round"
+                    lineCap="round"
+                    tension={['organic', 'fluid_organic', 'serpentine_wave', 'crescent', 'bowtie_geometric', 'circular', 'oval', 'pebble', 'kidney', 'teardrop', 'courtyard_curved'].includes(amenity.shape) ? 0.35 : 0}
                     visible={!isSpecialPoint}
                     listening={activeTool !== 'ERASER'}
                   />
                 )}
+
+                {isBuilding && !isSpecialPoint && (() => {
+                  const w = bbox.width;
+                  const h = bbox.height;
+                  const x0 = bbox.minX;
+                  const y0 = bbox.minY;
+                  const x1 = bbox.maxX;
+                  const y1 = bbox.maxY;
+                  const cx = bbox.cx;
+                  const cy = bbox.cy;
+
+                  // Design 1: Gable Roof (Forced for all buildings)
+                  if (w >= h) {
+                    return (
+                      <Group listening={false}>
+                        <Line points={[x0, cy, x1, cy]} stroke="rgba(15,23,42,0.45)" strokeWidth={1.2} />
+                        <Line points={[x0, y0, x0, y1]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                        <Line points={[x1, y0, x1, y1]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                        <Line points={[x0, y1, x1, y1, x1, cy, x0, cy]} fill="rgba(0,0,0,0.06)" closed={true} />
+                      </Group>
+                    );
+                  } else {
+                    return (
+                      <Group listening={false}>
+                        <Line points={[cx, y0, cx, y1]} stroke="rgba(15,23,42,0.45)" strokeWidth={1.2} />
+                        <Line points={[x0, y0, x1, y0]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                        <Line points={[x0, y1, x1, y1]} stroke="rgba(15,23,42,0.25)" strokeWidth={0.8} />
+                        <Line points={[x1, y0, x1, y1, cx, y1, cx, y0]} fill="rgba(0,0,0,0.06)" closed={true} />
+                      </Group>
+                    );
+                  }
+                })()}
 
                 {isSpecialPoint && (() => {
                   const w = amenity.width_px || bbox.width;
@@ -5521,16 +5770,29 @@ out skel qt;`;
                       />
                     )}
                     <Group listening={false} x={bbox.cx} y={bbox.cy} rotation={angleDeg}>
-                    {amenity.type === 'tree' ? (
-                      <Group>
-                        {/* Shadow */}
-                        <Circle x={2} y={3} radius={Math.min(tw, th) * 0.3 * 0.85} fill="rgba(0,0,0,0.18)" />
-                        {/* Outer canopy */}
-                        <Circle x={0} y={0} radius={Math.min(tw, th) * 0.3} fill="#22863a" />
-                        {/* Inner highlight */}
-                        <Circle x={-Math.min(tw, th) * 0.3 * 0.2} y={-Math.min(tw, th) * 0.3 * 0.2} radius={Math.min(tw, th) * 0.3 * 0.55} fill="#34a853" />
-                      </Group>
-                    ) : (
+                    {(amenity.type === 'tree' || amenity.type === 'tree_cluster') ? (() => {
+                      const r = Math.min(tw, th) * 0.2;
+                      const offsets = [
+                        { x: 0, y: 0 },
+                        { x: -r * 0.45, y: -r * 0.45 },
+                        { x: r * 0.45, y: -r * 0.4 },
+                        { x: r * 0.4, y: r * 0.45 },
+                        { x: -r * 0.45, y: r * 0.4 }
+                      ];
+                      return (
+                        <Group>
+                          {offsets.map((o, idx) => (
+                            <Circle key={`sh-${idx}`} x={o.x + 2} y={o.y + 3} radius={r * 0.85} fill="rgba(0,0,0,0.18)" />
+                          ))}
+                          {offsets.map((o, idx) => (
+                            <Circle key={`c1-${idx}`} x={o.x} y={o.y} radius={r} fill="#22863a" />
+                          ))}
+                          {offsets.map((o, idx) => (
+                            <Circle key={`c2-${idx}`} x={o.x - r * 0.2} y={o.y - r * 0.2} radius={r * 0.55} fill="#34a853" />
+                          ))}
+                        </Group>
+                      );
+                    })() : (
                       <>
                         <Shape
                           sceneFunc={(context) => {
@@ -5624,6 +5886,11 @@ out skel qt;`;
 
                   const areaSqm = amenity.width_m * amenity.height_m;
                   const labelText = `${amenity.label || 'Amenity'}\n(${amenity.type.toUpperCase()})\n${Math.round(areaSqm).toLocaleString()} m²`;
+                  const lines = labelText.split('\n');
+                  const maxChars = Math.max(...lines.map(line => line.length));
+                  const baseFs = 10;
+                  let fs = Math.min(baseFs, bbox.width / (maxChars * 0.58), bbox.height / (lines.length * 1.25));
+                  fs = Math.max(4, fs);
                   return (
                     <Text
                       x={bbox.minX}
@@ -5631,11 +5898,12 @@ out skel qt;`;
                       width={bbox.width}
                       height={bbox.height}
                       text={labelText}
-                      fontSize={9}
+                      fontSize={fs}
                       fontStyle="bold"
                       fill="#0f172a"
                       align="center"
                       verticalAlign="middle"
+                      wrap="none"
                       listening={false}
                     />
                   );
@@ -5723,57 +5991,6 @@ out skel qt;`;
               const pts = getAmenityPoints(amenity);
               if (pts.flat().some(v => typeof v !== 'number' || !Number.isFinite(v))) return null;
               return renderTreesInArea(pts, amenity.id);
-            }
-            if (amenity.type === 'tree_cluster') {
-              const count = amenity.density === 'high' ? 40 : amenity.density === 'medium' ? 20 : 10;
-              const trees = [];
-              const seed = amenity.id.split('').reduce((a,b)=>a+b.charCodeAt(0),0);
-              const img1 = assets?.treePlan1;
-              const img2 = assets?.treePlan2;
-
-              for (let i = 0; i < count; i++) {
-                // simple pseudo-random based on index and seed
-                const angle = (seed * i * 13.1) % (Math.PI * 2);
-                const r = ((seed * i * 7.9) % 1) * (amenity.width_px / 2);
-                const tx = amenity.x_px + amenity.width_px / 2 + Math.cos(angle) * r;
-                const ty = amenity.y_px + amenity.height_px / 2 + Math.sin(angle) * r;
-                const sizePx = 14 + ((seed * i * 3.7) % 8); // Size between 14px and 22px
-                const img = null;
-
-                if (img) {
-                  trees.push(
-                    <Shape
-                      key={`${amenity.id}-tree-${i}`}
-                      listening={false}
-                      sceneFunc={(context) => {
-                        context.save();
-                        context.fillStyle = 'rgba(0,0,0,0.18)';
-                        context.beginPath();
-                        context.ellipse(tx + sizePx * 0.1, ty + sizePx * 0.12, sizePx * 0.3, sizePx * 0.15, 0, 0, Math.PI * 2);
-                        context.fill();
-                        context.restore();
-
-                        context.save();
-                        context.beginPath();
-                        context.arc(tx, ty, sizePx * 0.28, 0, Math.PI * 2);
-                        context.clip();
-                        drawImageContain(context, img, tx - sizePx / 2, ty - sizePx / 2, sizePx, sizePx);
-                        context.restore();
-                      }}
-                    />
-                  );
-                } else {
-                  const radius = sizePx * 0.3;
-                  trees.push(
-                    <Group key={`${amenity.id}-tree-${i}`} x={tx} y={ty} listening={false}>
-                      <Circle x={2} y={3} radius={radius * 0.85} fill="rgba(0,0,0,0.18)" />
-                      <Circle x={0} y={0} radius={radius} fill="#22863a" />
-                      <Circle x={-radius * 0.2} y={-radius * 0.2} radius={radius * 0.55} fill="#34a853" />
-                    </Group>
-                  );
-                }
-              }
-              return <Group key={`cluster-${amenity.id}`}>{trees}</Group>;
             }
             return null;
           })}
@@ -5922,16 +6139,22 @@ out skel qt;`;
             );
           })()}
 
-          {/* Selection Outline — no rotation, no resize anchors, locked bounding box */}
+          {/* Selection Outline — resize and rotate enabled */}
           <Transformer
             ref={transformerRef}
-            rotateEnabled={false}
-            resizeEnabled={false}
-            enabledAnchors={[]}
+            rotateEnabled={true}
+            resizeEnabled={true}
+            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+            rotateAnchorOffset={12}
             borderStroke="#4f46e5"
-            borderStrokeWidth={1.5}
-            borderDash={[4, 3]}
-            anchorSize={0}
+            borderStrokeWidth={1}
+            borderDash={[3, 3]}
+            anchorSize={5}
+            anchorCornerRadius={0}
+            anchorFill="#ffffff"
+            anchorStroke="#4f46e5"
+            anchorStrokeWidth={1.2}
+            padding={0}
           />
         </Layer>
           </Stage>
@@ -5940,7 +6163,7 @@ out skel qt;`;
         {/* Legend Dropdown — collapsed by default, click header to expand */}
         {meta.showNumberLegend && legendMapping.length > 0 && (
           <div
-            className="absolute bottom-6 left-6 z-20"
+            className="absolute bottom-6 right-24 z-20"
             style={{ pointerEvents: 'auto' }}
           >
             {/* Toggle pill */}

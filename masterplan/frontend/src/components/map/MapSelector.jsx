@@ -22,7 +22,6 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
   const mapInstanceRef = useRef(null);
   const containerRef = useRef(null);
   
-  const [mapMode, setMapMode] = useState('street'); // street | satellite
   const [points, setPoints] = useState([]);
   const [siteDetails, setSiteDetails] = useState(null);
   const [rotationAngle, setRotationAngle] = useState(0);
@@ -117,19 +116,6 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
   const polygonInstanceRef = useRef(null);
   const markersRef = useRef([]);
 
-  const getActiveStreetBasemap = () => {
-    return localStorage.getItem('active_basemap_street') || 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-  };
-
-  const getActiveSatelliteBasemap = () => {
-    return localStorage.getItem('active_basemap_satellite') || 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-  };
-
-  const tileLayers = {
-    street: getActiveStreetBasemap(),
-    satellite: getActiveSatelliteBasemap()
-  };
-
   // Map Initialization
   useEffect(() => {
     let lat = 28.4595;
@@ -155,7 +141,7 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
       map.invalidateSize();
     }, 200);
 
-    L.tileLayer(tileLayers[mapMode]).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     // Map Click Listener to add boundary dots
     map.on('click', (e) => {
@@ -171,6 +157,7 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
           // GeoJSON coords are [lng, lat], map expects latlng objects
           const pts = coords.slice(0, -1).map(c => L.latLng(c[1], c[0]));
           setPoints(pts);
+          setMapStep('finalize');
           if (initialProject.lat && initialProject.lng) {
             map.setView([initialProject.lat, initialProject.lng], 17);
           }
@@ -321,20 +308,6 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
     }
   }, [points, rotationAngle, mapStep]);
 
-  // Toggle map view
-  const toggleMapMode = () => {
-    const nextMode = mapMode === 'street' ? 'satellite' : 'street';
-    setMapMode(nextMode);
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.eachLayer((layer) => {
-        if (layer instanceof L.TileLayer) {
-          mapInstanceRef.current.removeLayer(layer);
-        }
-      });
-      L.tileLayer(tileLayers[nextMode]).addTo(mapInstanceRef.current);
-    }
-  };
-
   // Clear points handler
   const handleClearPoints = () => {
     setPoints([]);
@@ -355,9 +328,6 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
                 Clear Points
               </Button>
             )}
-            <Button onClick={toggleMapMode} variant="secondary" className="text-xs py-1 px-3">
-              Switch to {mapMode === 'street' ? 'Satellite' : 'Street'} View
-            </Button>
           </div>
         </div>
       )}
@@ -539,16 +509,6 @@ export default function MapSelector({ searchCenter, onSelectBoundary, initialPro
           >
             {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </button>
-
-          {/* Satellite Mode Switch inside Map during Finalize step */}
-          {mapStep === 'finalize' && (
-            <button
-              onClick={toggleMapMode}
-              className="absolute bottom-3 left-3 z-[1000] bg-white/90 text-slate-700 hover:text-slate-900 border border-slate-200 py-1.5 px-3 rounded shadow-md text-[10px] font-bold transition-all hover:bg-white"
-            >
-              Mode: {mapMode === 'street' ? 'Satellite' : 'Street'}
-            </button>
-          )}
 
           {/* Floating Confirm Button in Draw step */}
           {mapStep === 'draw' && points.length >= 3 && (

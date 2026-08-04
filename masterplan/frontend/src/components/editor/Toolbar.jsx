@@ -221,19 +221,6 @@ export default function Toolbar({ viewMode, setViewMode }) {
       <hr className="border-slate-100" />
 
       <div className="flex flex-col gap-1.5">
-        <button
-          onClick={() => setGridSnapped(!gridSnapped)}
-          className={`flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${
-            gridSnapped 
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-              : 'text-slate-600 border border-transparent hover:bg-slate-100'
-          }`}
-          title="Toggle Grid Snapping (Shift+G)"
-        >
-          <Grid size={14} />
-          <span>Grid Snap</span>
-          <span className="ml-auto text-[10px] text-slate-400">Shift+G</span>
-        </button>
 
         <div className="grid grid-cols-2 gap-1.5 mt-2">
           <button

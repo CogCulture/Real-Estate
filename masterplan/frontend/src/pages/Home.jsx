@@ -60,13 +60,6 @@ export default function Home() {
         </div>
         <div className="flex gap-3">
           <button 
-            onClick={() => navigate('/maps')} 
-            className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 hover:text-slate-950 border border-slate-200 hover:bg-slate-50 px-4 py-2.5 rounded transition-colors"
-          >
-            <Map size={16} />
-            Configure Maps
-          </button>
-          <button 
             onClick={() => navigate('/new-project')}
             className="flex items-center gap-1.5 bg-black hover:bg-neutral-800 text-white font-semibold py-2.5 px-4 rounded shadow text-sm transition-all hover:scale-[1.02]"
           >

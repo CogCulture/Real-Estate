@@ -16,20 +16,53 @@ def geosearch(q: str):
     if not q.strip():
         return []
     try:
-        url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(q)}&format=json&limit=5"
+        # Photon (by Komoot) — powered by OSM, great POI/brand name fuzzy autocomplete
+        url = (
+            f"https://photon.komoot.io/api/"
+            f"?q={urllib.parse.quote(q)}&limit=8&lang=en"
+        )
         req = urllib.request.Request(
             url,
             headers={
                 'User-Agent': 'MasterPlanTownshipApp/2.0 (architect@masterplan.com)',
-                'Accept-Language': 'en'
+                'Accept': 'application/json'
             }
         )
         ctx = ssl._create_unverified_context()
         with urllib.request.urlopen(req, context=ctx, timeout=10) as response:
-            data = response.read()
-            return json.loads(data.decode('utf-8'))
+            data = json.loads(response.read().decode('utf-8'))
+
+        # Normalise Photon GeoJSON → same shape frontend expects from Nominatim
+        results = []
+        for feature in data.get('features', []):
+            props = feature.get('properties', {})
+            coords = feature.get('geometry', {}).get('coordinates', [None, None])
+            lon, lat = coords[0], coords[1]
+            if lat is None or lon is None:
+                continue
+
+            # Build a human-readable display name
+            parts = [
+                props.get('name', ''),
+                props.get('street', ''),
+                props.get('city', '') or props.get('town', '') or props.get('village', ''),
+                props.get('state', ''),
+                props.get('country', ''),
+            ]
+            display_name = ', '.join(p for p in parts if p)
+
+            results.append({
+                'place_id': f"{lat},{lon}",
+                'lat': str(lat),
+                'lon': str(lon),
+                'display_name': display_name,
+                'type': props.get('osm_value', ''),
+            })
+
+        return results
+
     except Exception as e:
-        print("Geosearch Nominatim backend proxy error:", e)
+        print("Geosearch Photon proxy error:", e)
         raise HTTPException(status_code=500, detail=f"Failed to fetch geocoding search results: {str(e)}")
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
