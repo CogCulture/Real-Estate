@@ -756,7 +756,7 @@ def generate_report(masterplan_json: dict, conflicts: list, violations: list) ->
         "utilization_pct": round(utilization_pct, 2)
     }
 
-def resolve_layout(masterplan_json: dict, boundary_poly: list = None, site_width_m: float = 500.0, site_height_m: float = 300.0, project_features: dict = None) -> dict:
+def resolve_layout(masterplan_json: dict, boundary_poly: list, site_width_m: float, site_height_m: float, project_features: dict = None) -> dict:
     towers = masterplan_json.get("towers", [])
     amenities = masterplan_json.get("amenities", [])
     roads = masterplan_json.get("roads", [])

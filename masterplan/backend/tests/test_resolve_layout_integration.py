@@ -26,19 +26,6 @@ def test_resolve_layout_with_real_parameters():
     assert "amenities" in resolved_layout
 
 
-def test_resolve_layout_backward_compatibility():
-    """Verify resolve_layout still works with 2-arg call (backward compat)."""
-    poly = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-    
-    layout = generate_procedural_fallback(500.0, 300.0, {}, poly)
-    
-    # Call with only 2 args (old signature) - should use defaults
-    resolved_layout = resolve_layout(layout, poly)
-    
-    assert resolved_layout is not None
-    assert "towers" in resolved_layout
-
-
 def test_resolve_layout_with_project_features():
     """Verify resolve_layout accepts project_features parameter."""
     poly = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
