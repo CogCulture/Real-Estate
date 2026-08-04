@@ -1607,10 +1607,33 @@ class ConstraintSolver:
                         pts = [(cx_el, cy_el), (cx_el - w/2.0, cy_el), (cx_el + w/2.0, cy_el), (cx_el, cy_el - h/2.0), (cx_el, cy_el + h/2.0)]
                     else:
                         pts = [(cx_el - w/2.0, cy_el - h/2.0), (cx_el + w/2.0, cy_el - h/2.0), (cx_el - w/2.0, cy_el + h/2.0), (cx_el + w/2.0, cy_el + h/2.0)]
-                        
+
                     outside = [p for p in pts if not is_point_in_polygon(p[0], p[1], self.boundary_poly)]
                     if outside:
-                        cx_el, cy_el = nearest_point_on_polygon(cx_el, cy_el, self.boundary_poly)
+                        # Move center toward polygon centroid until all corners are inside
+                        max_iterations = 100
+                        step_size = 0.05
+                        for _ in range(max_iterations):
+                            # Move toward centroid
+                            dx = self.cx - cx_el
+                            dy = self.cy - cy_el
+                            dist = math.sqrt(dx*dx + dy*dy)
+                            if dist < 1e-6:
+                                break
+
+                            # Normalize and apply step
+                            cx_el += (dx / dist) * step_size
+                            cy_el += (dy / dist) * step_size
+
+                            # Recalculate corners
+                            if is_ellipse:
+                                pts = [(cx_el, cy_el), (cx_el - w/2.0, cy_el), (cx_el + w/2.0, cy_el), (cx_el, cy_el - h/2.0), (cx_el, cy_el + h/2.0)]
+                            else:
+                                pts = [(cx_el - w/2.0, cy_el - h/2.0), (cx_el + w/2.0, cy_el - h/2.0), (cx_el - w/2.0, cy_el + h/2.0), (cx_el + w/2.0, cy_el + h/2.0)]
+
+                            outside = [p for p in pts if not is_point_in_polygon(p[0], p[1], self.boundary_poly)]
+                            if not outside:
+                                break
                 else:
                     margin = 0.06
                     max_pos_x = 1.0 - margin - w/2.0

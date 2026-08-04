@@ -90,14 +90,44 @@ def test_resolve_layout_fallback_path():
 def test_resolve_layout_constraint_solver_uses_real_dimensions():
     """Verify ConstraintSolver receives real site dimensions from resolve_layout."""
     poly = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-    
+
     # Use non-default dimensions to verify they're actually used
     custom_sw, custom_sh = 800.0, 400.0
     layout = generate_procedural_fallback(custom_sw, custom_sh, {}, poly)
-    
+
     # Resolve with custom dimensions
     resolved_layout = resolve_layout(layout, poly, custom_sw, custom_sh, None)
-    
+
     # The layout should still be valid with custom dimensions
     assert resolved_layout is not None
     assert "towers" in resolved_layout
+
+
+def test_resolve_layout_pulls_out_of_bounds_tower_inside():
+    """Verify resolve_layout actually pulls out-of-bounds towers inside boundary."""
+    from planning_engine import is_point_in_polygon
+
+    # Small square boundary in the center
+    poly = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]
+
+    # Tower placed outside the boundary
+    layout = {
+        "towers": [{"id": "t1", "x_pct": 0.85, "y_pct": 0.85, "width_pct": 0.05, "height_pct": 0.05}],
+        "amenities": [],
+        "roads": [],
+        "pedestrian_paths": []
+    }
+
+    result = resolve_layout(layout, poly, 500.0, 300.0, None)
+    t = result["towers"][0]
+
+    # Check all corners are inside the polygon
+    corners = [
+        (t["x_pct"], t["y_pct"]),
+        (t["x_pct"] + t["width_pct"], t["y_pct"]),
+        (t["x_pct"], t["y_pct"] + t["height_pct"]),
+        (t["x_pct"] + t["width_pct"], t["y_pct"] + t["height_pct"])
+    ]
+
+    assert all(is_point_in_polygon(x, y, poly) for x, y in corners), \
+        f"Tower corners {corners} should all be inside boundary after resolve_layout"
