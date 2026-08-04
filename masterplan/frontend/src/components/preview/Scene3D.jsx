@@ -433,19 +433,19 @@ export default function Scene3D({ cameraPreset = 'aerial' }) {
 
     const PRESETS = {
       aerial: {
-        pos:    [cx + 0.01, maxDim * 1.9, cz + 0.01],
+        pos:    [cx, maxDim * 1.5, cz + maxDim * 0.9],
         lookAt: [cx, 0, cz]
       },
       isometric: {
-        pos:    [cx + 0.01, maxDim * 1.45, cz + 0.01],
+        pos:    [cx - maxDim * 0.9, maxDim * 0.9, cz + maxDim * 0.9],
         lookAt: [cx, 0, cz]
       },
       street: {
-        pos:    [cx + 0.01, maxDim * 0.95, cz + 0.01],
+        pos:    [cx - maxDim * 0.55, maxDim * 0.08, cz + maxDim * 0.55],
         lookAt: [cx, 0, cz]
       },
       cinematic: {
-        pos:    [cx + 0.01, maxDim * 1.25, cz + 0.01],
+        pos:    [cx + maxDim * 0.85, maxDim * 0.35, cz + maxDim * 0.75],
         lookAt: [cx, 0, cz]
       }
     };
