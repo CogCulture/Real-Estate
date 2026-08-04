@@ -757,7 +757,11 @@ def _grid_cells_in_polygon(poly, cell_w, cell_h, pad_x=0, pad_y=0):
     while x < max_x - pad_x:
         y = min_y + cell_h / 2 + pad_y
         while y < max_y - pad_y:
-            if is_point_in_polygon(x, y, poly):
+            c1 = is_point_in_polygon(x - cell_w / 2, y - cell_h / 2, poly)
+            c2 = is_point_in_polygon(x + cell_w / 2, y - cell_h / 2, poly)
+            c3 = is_point_in_polygon(x + cell_w / 2, y + cell_h / 2, poly)
+            c4 = is_point_in_polygon(x - cell_w / 2, y + cell_h / 2, poly)
+            if c1 and c2 and c3 and c4:
                 cells.append((round(x, 4), round(y, 4)))
             y += cell_h
         x += cell_w
