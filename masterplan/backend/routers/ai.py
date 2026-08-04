@@ -72,24 +72,33 @@ OUTPUT RULES:
 @router.post("/suggest")
 async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = Depends(get_db)):
     logger.info(f"Starting /suggest request for site {request.site_width_m}m x {request.site_height_m}m")
+    return await _suggest_impl(request, db)
+
+
+@router.post("/generate")
+async def generate_layout(request: AiSuggestRequest, db: aiosqlite.Connection = Depends(get_db)):
+    logger.info(f"Starting /generate request for site {request.site_width_m}m x {request.site_height_m}m")
+    return await _suggest_impl(request, db)
+
+
+async def _suggest_impl(request: AiSuggestRequest, db: aiosqlite.Connection = Depends(get_db)):
     model_name = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620")
     api_key = os.environ.get("VITE_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-    
+
     if not api_key:
         raise HTTPException(status_code=500, detail="Anthropic API key not configured in backend.")
 
     # Calculate realistic percentage sizes based on actual site dimensions
     sw = request.site_width_m
     sh = request.site_height_m
-    tower_w_pct = min(30.0 / sw, 0.10)   # ~30m tower width
-    tower_h_pct = min(22.0 / sh, 0.08)   # ~22m tower depth
-    road_12m_pct = 12.0 / sw
+
+    # Handle both old 'features' and new 'project_features' parameter names
+    project_features = request.project_features or request.features or {}
+    boundary_geojson = request.boundary_geojson
 
     try:
         site_width_m = request.site_width_m
         site_height_m = request.site_height_m
-        boundary_geojson = request.boundary_geojson
-        project_features = request.project_features or {}
         sw, sh = site_width_m, site_height_m
 
         # Build boundary coordinates and centroid if boundary geojson exists

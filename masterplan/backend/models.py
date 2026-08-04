@@ -50,7 +50,9 @@ class AiSuggestRequest(BaseModel):
     project_id: str
     site_width_m: float
     site_height_m: float
-    features: Optional[Dict] = None
+    boundary_geojson: Optional[str] = None
+    project_features: Optional[Dict] = None
+    features: Optional[Dict] = None  # Legacy parameter name
 
 class ApiUsageResponse(BaseModel):
     id: str
