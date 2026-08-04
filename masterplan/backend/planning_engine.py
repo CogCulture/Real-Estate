@@ -1152,6 +1152,68 @@ def merge_layout_choices(template_layout: dict, claude_layout: dict) -> dict:
             
     return result
 
+def nearest_point_on_polygon(x: float, y: float, poly: list) -> tuple:
+    if not poly or len(poly) < 3:
+        return x, y
+    best_dist = float('inf')
+    best_pt = (x, y)
+    best_normal = (0.0, 0.0)
+    
+    n = len(poly)
+    loop_limit = n
+    if n > 1 and poly[0] == poly[-1]:
+        loop_limit = n - 1
+        
+    for i in range(loop_limit):
+        a = poly[i]
+        b = poly[(i + 1) % n]
+        
+        ax, ay = a[0], a[1]
+        bx, by = b[0], b[1]
+        
+        dx = bx - ax
+        dy = by - ay
+        seg_len_sq = dx * dx + dy * dy
+        
+        if seg_len_sq < 1e-12:
+            proj_x, proj_y = ax, ay
+            nx, ny = 0.0, 0.0
+        else:
+            t = ((x - ax) * dx + (y - ay) * dy) / seg_len_sq
+            t = max(0.0, min(1.0, t))
+            proj_x = ax + t * dx
+            proj_y = ay + t * dy
+            
+            # Perpendicular vector to AB
+            nx = -dy
+            ny = dx
+            n_len = math.sqrt(nx*nx + ny*ny)
+            nx /= n_len
+            ny /= n_len
+            
+            # Find which direction points inward
+            eps = 1e-5
+            test_x = proj_x + nx * eps
+            test_y = proj_y + ny * eps
+            if not is_point_in_polygon(test_x, test_y, poly):
+                nx = -nx
+                ny = -ny
+                
+        dist_x = x - proj_x
+        dist_y = y - proj_y
+        dist = math.sqrt(dist_x * dist_x + dist_y * dist_y)
+        
+        if dist < best_dist:
+            best_dist = dist
+            best_pt = (proj_x, proj_y)
+            best_normal = (nx, ny)
+            
+    epsilon = 0.005
+    target_x = best_pt[0] + best_normal[0] * epsilon
+    target_y = best_pt[1] + best_normal[1] * epsilon
+    return target_x, target_y
+
+
 class ConstraintSolver:
     def __init__(self, boundary_poly: list = None, site_width: float = 500.0, site_height: float = 300.0):
         self.boundary_poly = boundary_poly
@@ -1235,14 +1297,7 @@ class ConstraintSolver:
                         
                     outside = [p for p in pts if not is_point_in_polygon(p[0], p[1], self.boundary_poly)]
                     if outside:
-                        dx = cx_el - self.cx
-                        dy = cy_el - self.cy
-                        dist = math.sqrt(dx*dx + dy*dy) or 1e-9
-                        ux = dx / dist
-                        uy = dy / dist
-                        new_dist = max(0.01, dist - 0.015)
-                        cx_el = self.cx + ux * new_dist
-                        cy_el = self.cy + uy * new_dist
+                        cx_el, cy_el = nearest_point_on_polygon(cx_el, cy_el, self.boundary_poly)
                 else:
                     margin = 0.06
                     max_pos_x = 1.0 - margin - w/2.0
@@ -1270,14 +1325,9 @@ class ConstraintSolver:
                         if len(pt) >= 2:
                             rx, ry = pt[0], pt[1]
                             if not is_point_in_polygon(rx, ry, self.boundary_poly):
-                                dx = rx - self.cx
-                                dy = ry - self.cy
-                                dist = math.sqrt(dx*dx + dy*dy) or 1e-9
-                                ux = dx / dist
-                                uy = dy / dist
-                                new_dist = max(0.01, dist - 0.015)
-                                pt[0] = round(self.cx + ux * new_dist, 4)
-                                pt[1] = round(self.cy + uy * new_dist, 4)
+                                npx, npy = nearest_point_on_polygon(rx, ry, self.boundary_poly)
+                                pt[0] = round(npx, 4)
+                                pt[1] = round(npy, 4)
                                 
                 for p in paths:
                     points = p.get("points", [])
@@ -1285,13 +1335,8 @@ class ConstraintSolver:
                         if len(pt) >= 2:
                             rx, ry = pt[0], pt[1]
                             if not is_point_in_polygon(rx, ry, self.boundary_poly):
-                                dx = rx - self.cx
-                                dy = ry - self.cy
-                                dist = math.sqrt(dx*dx + dy*dy) or 1e-9
-                                ux = dx / dist
-                                uy = dy / dist
-                                new_dist = max(0.01, dist - 0.015)
-                                pt[0] = round(self.cx + ux * new_dist, 4)
-                                pt[1] = round(self.cy + uy * new_dist, 4)
+                                npx, npy = nearest_point_on_polygon(rx, ry, self.boundary_poly)
+                                pt[0] = round(npx, 4)
+                                pt[1] = round(npy, 4)
                                 
         return elements
