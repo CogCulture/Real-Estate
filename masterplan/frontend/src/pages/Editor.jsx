@@ -528,7 +528,6 @@ export default function Editor() {
             /* Collapsed: icon-only strip */
             <div className="flex flex-col items-center gap-1 pt-2">
               {[
-                { icon: BoxSelect, label: 'Cluster Select', tool: 'CLUSTER_SELECT' },
                 { icon: Square, label: 'Zone', tool: 'ZONE' },
                 { icon: MapPin, label: 'Label', tool: 'LABEL' },
                 { icon: Eraser, label: 'Eraser', tool: 'ERASER' },

@@ -46,7 +46,6 @@ export default function Toolbar({ viewMode, setViewMode }) {
   };
 
   const tools = [
-    { id: 'CLUSTER_SELECT', label: 'Select Area (C)', icon: BoxSelect, shortcut: 'c' },
     { id: 'LABEL', label: 'Label (T)', icon: MapPin, shortcut: 't' },
     { id: 'ERASER', label: 'Eraser (E)', icon: Eraser, shortcut: 'e' }
   ];
