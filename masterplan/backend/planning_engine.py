@@ -688,58 +688,123 @@ def resolve_layout(masterplan_json: dict, boundary_poly: list = None) -> dict:
     masterplan_json["pedestrian_paths"] = paths
     return masterplan_json
 
+def is_polygon_self_intersecting(poly):
+    pts = list(poly)
+    if len(pts) < 3:
+        return False
+    if pts[0] == pts[-1]:
+        pts = pts[:-1]
+    n = len(pts)
+    
+    def on_segment(p, q, r):
+        if (q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0]) and
+                q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1])):
+            return True
+        return False
+
+    def orientation(p, q, r):
+        val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
+        if abs(val) < 1e-9:
+            return 0
+        return 1 if val > 0 else 2
+
+    def do_intersect(p1, q1, p2, q2):
+        o1 = orientation(p1, q1, p2)
+        o2 = orientation(p1, q1, q2)
+        o3 = orientation(p2, q2, p1)
+        o4 = orientation(p2, q2, q1)
+
+        if o1 != o2 and o3 != o4:
+            return True
+
+        if o1 == 0 and on_segment(p1, p2, q1): return True
+        if o2 == 0 and on_segment(p1, q2, q1): return True
+        if o3 == 0 and on_segment(p2, p1, q2): return True
+        if o4 == 0 and on_segment(p2, q1, q2): return True
+
+        return False
+
+    for i in range(n):
+        p1, q1 = pts[i], pts[(i + 1) % n]
+        for j in range(i + 2, n):
+            if (i == 0 and j == n - 1):
+                continue
+            p2, q2 = pts[j], pts[(j + 1) % n]
+            if do_intersect(p1, q1, p2, q2):
+                return True
+    return False
+
+
 def _inset_polygon(poly, offset):
     """Inset a polygon by offset (in pct units). Returns new polygon or original if degenerate."""
     if len(poly) < 3:
         return poly
-    pts = list(poly)
-    if pts[0] == pts[-1]:
-        pts = pts[:-1]
-    n = len(pts)
+    
+    current_offset = offset
+    for attempt in range(5):
+        pts = list(poly)
+        if pts[0] == pts[-1]:
+            pts = pts[:-1]
+        n = len(pts)
 
-    # Compute signed area to determine winding
-    area = sum(pts[i][0] * pts[(i+1) % n][1] - pts[(i+1) % n][0] * pts[i][1] for i in range(n))
-    ccw = area > 0  # counter-clockwise
+        # Compute signed area to determine winding
+        area = sum(pts[i][0] * pts[(i+1) % n][1] - pts[(i+1) % n][0] * pts[i][1] for i in range(n))
+        ccw = area > 0  # counter-clockwise
 
-    inset = []
-    for i in range(n):
-        prev = pts[(i - 1) % n]
-        curr = pts[i]
-        nxt  = pts[(i + 1) % n]
+        inset = []
+        for i in range(n):
+            prev = pts[(i - 1) % n]
+            curr = pts[i]
+            nxt  = pts[(i + 1) % n]
 
-        def edge_normal(a, b):
-            dx, dy = b[0] - a[0], b[1] - a[1]
-            length = math.hypot(dx, dy)
-            if length < 1e-9:
-                return (0, 0)
-            # Inward normal depends on winding
-            if ccw:
-                return (-dy / length, dx / length)
+            def edge_normal(a, b):
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                length = math.hypot(dx, dy)
+                if length < 1e-9:
+                    return (0, 0)
+                # Inward normal depends on winding
+                if ccw:
+                    return (-dy / length, dx / length)
+                else:
+                    return (dy / length, -dx / length)
+
+            n1 = edge_normal(prev, curr)
+            n2 = edge_normal(curr, nxt)
+
+            bx = n1[0] + n2[0]
+            by = n1[1] + n2[1]
+            blen = math.hypot(bx, by)
+            if blen < 1e-9:
+                inset.append([curr[0] + n1[0] * current_offset, curr[1] + n1[1] * current_offset])
+                continue
+
+            bx /= blen
+            by /= blen
+            dot = bx * n1[0] + by * n1[1]
+            if abs(dot) < 1e-9:
+                length = current_offset
             else:
-                return (dy / length, -dx / length)
+                length = current_offset / dot
+            length = max(-abs(current_offset) * 5, min(abs(current_offset) * 5, length))
+            inset.append([round(curr[0] + bx * length, 4), round(curr[1] + by * length, 4)])
 
-        n1 = edge_normal(prev, curr)
-        n2 = edge_normal(curr, nxt)
-
-        bx = n1[0] + n2[0]
-        by = n1[1] + n2[1]
-        blen = math.hypot(bx, by)
-        if blen < 1e-9:
-            inset.append([curr[0] + n1[0] * offset, curr[1] + n1[1] * offset])
-            continue
-
-        bx /= blen
-        by /= blen
-        dot = bx * n1[0] + by * n1[1]
-        if abs(dot) < 1e-9:
-            length = offset
-        else:
-            length = offset / dot
-        length = max(-abs(offset) * 5, min(abs(offset) * 5, length))
-        inset.append([round(curr[0] + bx * length, 4), round(curr[1] + by * length, 4)])
-
-    # Close
-    inset.append([inset[0][0], inset[0][1]])
+        # Close
+        inset.append([inset[0][0], inset[0][1]])
+        
+        # Check if the inset polygon is self-intersecting
+        if not is_polygon_self_intersecting(inset):
+            return inset
+            
+        current_offset *= 0.6
+        
+    # If all reduced miter attempts still self-intersect, fallback to standard scale/offset fallback
+    cx, cy = get_polygon_centroid(poly)
+    inset = []
+    scale = max(0.1, 1.0 - abs(offset) * 2.0)
+    for p in poly:
+        nx = cx + (p[0] - cx) * scale
+        ny = cy + (p[1] - cy) * scale
+        inset.append([round(nx, 4), round(ny, 4)])
     return inset
 
 
