@@ -688,292 +688,375 @@ def resolve_layout(masterplan_json: dict, boundary_poly: list = None) -> dict:
     masterplan_json["pedestrian_paths"] = paths
     return masterplan_json
 
+def _inset_polygon(poly, offset):
+    """Inset a polygon by offset (in pct units). Returns new polygon or original if degenerate."""
+    if len(poly) < 3:
+        return poly
+    pts = list(poly)
+    if pts[0] == pts[-1]:
+        pts = pts[:-1]
+    n = len(pts)
+
+    # Compute signed area to determine winding
+    area = sum(pts[i][0] * pts[(i+1) % n][1] - pts[(i+1) % n][0] * pts[i][1] for i in range(n))
+    ccw = area > 0  # counter-clockwise
+
+    inset = []
+    for i in range(n):
+        prev = pts[(i - 1) % n]
+        curr = pts[i]
+        nxt  = pts[(i + 1) % n]
+
+        def edge_normal(a, b):
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            length = math.hypot(dx, dy)
+            if length < 1e-9:
+                return (0, 0)
+            # Inward normal depends on winding
+            if ccw:
+                return (-dy / length, dx / length)
+            else:
+                return (dy / length, -dx / length)
+
+        n1 = edge_normal(prev, curr)
+        n2 = edge_normal(curr, nxt)
+
+        bx = n1[0] + n2[0]
+        by = n1[1] + n2[1]
+        blen = math.hypot(bx, by)
+        if blen < 1e-9:
+            inset.append([curr[0] + n1[0] * offset, curr[1] + n1[1] * offset])
+            continue
+
+        bx /= blen
+        by /= blen
+        dot = bx * n1[0] + by * n1[1]
+        if abs(dot) < 1e-9:
+            length = offset
+        else:
+            length = offset / dot
+        length = max(-abs(offset) * 5, min(abs(offset) * 5, length))
+        inset.append([round(curr[0] + bx * length, 4), round(curr[1] + by * length, 4)])
+
+    # Close
+    inset.append([inset[0][0], inset[0][1]])
+    return inset
+
+
+def _grid_cells_in_polygon(poly, cell_w, cell_h, pad_x=0, pad_y=0):
+    """Return list of (cx, cy) grid cell centres that fall inside poly."""
+    if not poly or len(poly) < 3:
+        return []
+    xs = [p[0] for p in poly]
+    ys = [p[1] for p in poly]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+
+    cells = []
+    x = min_x + cell_w / 2 + pad_x
+    while x < max_x - pad_x:
+        y = min_y + cell_h / 2 + pad_y
+        while y < max_y - pad_y:
+            if is_point_in_polygon(x, y, poly):
+                cells.append((round(x, 4), round(y, 4)))
+            y += cell_h
+        x += cell_w
+    return cells
+
+
 def generate_procedural_fallback(site_width_m: float, site_height_m: float, project_features: dict = None, boundary_poly: list = None) -> dict:
     import random
-    
-    # 1. Calculate buildable envelope and target metrics
+
+    # ── 1. Buildable envelope ────────────────────────────────────────────────
     green_area_pct = 20.0
     if project_features and "green_area_pct" in project_features:
         try:
             green_area_pct = float(project_features["green_area_pct"])
         except ValueError:
             pass
-            
+
     setbacks = {
         'front': project_features.get('front_setback_m', 6.0) if project_features else 6.0,
-        'rear': project_features.get('rear_setback_m', 6.0) if project_features else 6.0,
-        'side': project_features.get('side_setback_m', 6.0) if project_features else 6.0
+        'rear':  project_features.get('rear_setback_m',  6.0) if project_features else 6.0,
+        'side':  project_features.get('side_setback_m',  6.0) if project_features else 6.0,
     }
-    
-    envelope = compute_buildable_envelope(boundary_poly, setbacks, site_width_m, site_height_m, green_area_pct)
+
+    envelope       = compute_buildable_envelope(boundary_poly, setbacks, site_width_m, site_height_m, green_area_pct)
     buildable_area = envelope["inset_area_m2"]
-    
+
     min_x = envelope["inset_min_x"]
     max_x = envelope["inset_max_x"]
     min_y = envelope["inset_min_y"]
     max_y = envelope["inset_max_y"]
-    
-    bw = max_x - min_x
-    bh = max_y - min_y
-    
+    bw    = max_x - min_x
+    bh    = max_y - min_y
+
     if boundary_poly:
         cx, cy = get_polygon_centroid(boundary_poly)
     else:
         cx, cy = 0.5, 0.52
-        
-    names = ["Elysian Heights", "Pinecrest Groves", "Vanderbilt Meadows", "Amberwood Reserve", "Orchard Ridge", "Windermere Oasis"]
-    themes = ["Modern Wellness Sanctuary", "European Heritage Estates", "Classic Contemporary Garden Living", "Neo-Classical Township Retreat"]
-    
-    name = random.choice(names)
-    theme = random.choice(themes)
+
+    # Build a pct-space inset polygon from the envelope for all placement
+    if boundary_poly and len(boundary_poly) >= 3:
+        inset_offset = min(bw, bh) * 0.08        # ~8% of shorter dimension
+        inset_poly   = _inset_polygon(boundary_poly, inset_offset)
+    else:
+        # Fallback: rectangular inset polygon
+        inset_poly = [
+            [min_x, min_y], [max_x, min_y],
+            [max_x, max_y], [min_x, max_y],
+            [min_x, min_y],
+        ]
+
+    # ── 2. Tower dimensions & count ─────────────────────────────────────────
+    names  = ["Elysian Heights", "Pinecrest Groves", "Vanderbilt Meadows",
+              "Amberwood Reserve", "Orchard Ridge", "Windermere Oasis"]
+    themes = ["Modern Wellness Sanctuary", "European Heritage Estates",
+              "Classic Contemporary Garden Living", "Neo-Classical Township Retreat"]
+    name   = random.choice(names)
+    theme  = random.choice(themes)
     if project_features:
-        if "theme" in project_features and project_features["theme"]:
-            theme = project_features["theme"]
-            
-    # 2. Extract BHK inputs and determine tower dimensions and counts
-    floors = 24
+        theme = project_features.get("theme", theme) or theme
+
+    floors          = 24
     units_per_tower = 120
-    unit_type = "3BHK"
-    
+    unit_type       = "3BHK"
+
     if project_features:
         units_per_tower = project_features.get("units", units_per_tower)
-        floors = project_features.get("floors", floors)
+        floors          = project_features.get("floors", floors)
         us = project_features.get("unit_specifications", {})
         if isinstance(us, dict):
-            floors = us.get("floors", us.get("avg_floors", floors))
-            units_per_tower = us.get("units", us.get("units_per_tower", units_per_tower))
-            unit_type = us.get("unit_type", us.get("type", unit_type))
-            
-    try: floors = int(floors)
-    except: floors = 24
-    try: units_per_tower = int(units_per_tower)
+            floors          = us.get("floors",          us.get("avg_floors",      floors))
+            units_per_tower = us.get("units",            us.get("units_per_tower", units_per_tower))
+            unit_type       = us.get("unit_type",        us.get("type",            unit_type))
+
+    try:    floors          = int(floors)
+    except: floors          = 24
+    try:    units_per_tower = int(units_per_tower)
     except: units_per_tower = 120
-    
-    avg_unit_size = get_unit_size(unit_type)
-    
-    # Starting tower count
+
+    avg_unit_size    = get_unit_size(unit_type)
+    footprint_area_sqm = (units_per_tower * avg_unit_size) / floors
+
     num_towers = 8
     if project_features and "total_towers" in project_features:
         try: num_towers = int(project_features["total_towers"])
         except: pass
     num_towers = max(4, min(16, num_towers))
-    
-    footprint_area_sqm = (units_per_tower * avg_unit_size) / floors
-    
-    # Check constraints and adjust down tower count if needed, then scale footprints if still needed
+
     max_footprint_budget = MAX_COVERAGE_RATIO * buildable_area
-    max_floor_budget = MAX_FAR * buildable_area
-    
-    while num_towers > 4 and (num_towers * footprint_area_sqm > max_footprint_budget or 
-                             num_towers * units_per_tower * avg_unit_size > max_floor_budget):
+    max_floor_budget     = MAX_FAR * buildable_area
+
+    while num_towers > 4 and (
+        num_towers * footprint_area_sqm > max_footprint_budget or
+        num_towers * units_per_tower * avg_unit_size > max_floor_budget
+    ):
         num_towers -= 1
-        
-    # If still exceeding at 4 towers, shrink the footprint area
+
     total_footprint = num_towers * footprint_area_sqm
-    total_floor = num_towers * units_per_tower * avg_unit_size
-    
+    total_floor     = num_towers * units_per_tower * avg_unit_size
     if total_footprint > max_footprint_budget or total_floor > max_floor_budget:
         scale = min(max_footprint_budget / total_footprint, max_floor_budget / total_floor)
         footprint_area_sqm *= scale
-        
-    # Standard aspect ratio for a tower footprint is 1.3
+
     th_m = math.sqrt(footprint_area_sqm / 1.3)
     tw_m = th_m * 1.3
-    
-    # Clamp physically
     th_m = max(12.0, min(40.0, th_m))
     tw_m = max(15.0, min(50.0, tw_m))
-    
-    tw = round(tw_m / site_width_m, 4)
+
+    tw = round(tw_m / site_width_m,  4)
     th = round(th_m / site_height_m, 4)
-    
-    actual_footprint_area = num_towers * (tw_m * th_m)
-    actual_floor_area = num_towers * (tw_m * th_m * floors)
-    actual_coverage_ratio = actual_footprint_area / buildable_area
-    actual_far = actual_floor_area / buildable_area
-    
-    # 3. Entry points
-    entry_x = 0.45 + random.random() * 0.1
+
+    actual_footprint_area  = num_towers * (tw_m * th_m)
+    actual_floor_area      = num_towers * (tw_m * th_m * floors)
+    actual_coverage_ratio  = actual_footprint_area  / buildable_area
+    actual_far             = actual_floor_area / buildable_area
+
+    # ── 3. Entry points ─────────────────────────────────────────────────────
+    entry_x     = round(0.45 + random.random() * 0.1, 4)
     entry_points = [
-        { "id": "main_entry", "side": "south", "x_pct": round(entry_x, 4), "y_pct": round(max_y, 4), "type": "main", "label": "Main Entry / Exit" },
-        { "id": "secondary_entry", "side": "north", "x_pct": round(entry_x + (random.random() * 0.08 - 0.04), 4), "y_pct": round(min_y, 4), "type": "secondary", "label": "Secondary Entry / Exit" }
+        {"id": "main_entry",      "side": "south", "x_pct": entry_x,
+         "y_pct": round(max_y, 4), "type": "main",      "label": "Main Entry / Exit"},
+        {"id": "secondary_entry", "side": "north", "x_pct": entry_x,
+         "y_pct": round(min_y, 4), "type": "secondary", "label": "Secondary Entry / Exit"},
     ]
-    
-    # 4. Towers placement along the ellipse
-    towers = []
+
+    # ── 4. Tower placement — polygon-aware grid ──────────────────────────────
+    # Build grid of candidate cells inside the inset polygon
+    # Cell spacing = tower footprint + gap
+    gap_w = tw * 0.6
+    gap_h = th * 0.6
+    cell_w = tw + gap_w
+    cell_h = th + gap_h
+
+    candidates = _grid_cells_in_polygon(inset_poly, cell_w, cell_h)
+
+    # Sort: prefer cells near the polygon boundary first (perimeter-first placement)
+    # gives the "ring of towers around the centre" feel without an ellipse
+    def dist_to_centroid(cell):
+        return math.hypot(cell[0] - cx, cell[1] - cy)
+
+    candidates.sort(key=dist_to_centroid, reverse=True)  # perimeter first
+
+    # Trim or expand candidate list to exactly num_towers
+    if len(candidates) >= num_towers:
+        # Pick evenly-spaced subset around the perimeter
+        step = len(candidates) / num_towers
+        chosen = [candidates[int(i * step) % len(candidates)] for i in range(num_towers)]
+    elif candidates:
+        # Fewer cells than towers — repeat as needed
+        chosen = (candidates * ((num_towers // len(candidates)) + 1))[:num_towers]
+    else:
+        # Absolute fallback: use centroid with offsets
+        chosen = [(cx + (i - num_towers / 2) * tw * 1.5, cy) for i in range(num_towers)]
+
     footprints = ["cruciform", "h_shaped", "u_shaped", "courtyard"]
-    rotations = [0, 45, 90, 135]
-    
-    rx_towers = bw * 0.35
-    ry_towers = bh * 0.35
-    
-    for i in range(num_towers):
-        angle = (i * 2 * math.pi) / num_towers
-        tx = cx + math.cos(angle) * rx_towers
-        ty = cy + math.sin(angle) * ry_towers
+    towers = []
+    for i, (tcx, tcy) in enumerate(chosen):
         letter = chr(65 + i)
-        
         towers.append({
-            "id": f"tower_{letter.lower()}",
-            "label": f"Tower {letter}",
-            "footprint": random.choice(footprints),
-            "x_pct": round(tx - tw / 2, 4),
-            "y_pct": round(ty - th / 2, 4),
-            "width_pct": tw,
-            "height_pct": th,
-            "rotation_deg": random.choice(rotations),
-            "floors": floors,
-            "units": units_per_tower,
-            "unit_type": unit_type,
-            "has_arrival_plaza": True,
-            "has_drop_off_loop": True,
-            "has_landscape_buffer": True
+            "id":                  f"tower_{letter.lower()}",
+            "label":               f"Tower {letter}",
+            "footprint":           random.choice(footprints),
+            "x_pct":               round(tcx - tw / 2, 4),
+            "y_pct":               round(tcy - th / 2, 4),
+            "width_pct":           tw,
+            "height_pct":          th,
+            "rotation_deg":        0,
+            "floors":              floors,
+            "units":               units_per_tower,
+            "unit_type":           unit_type,
+            "has_arrival_plaza":   True,
+            "has_drop_off_loop":   True,
+            "has_landscape_buffer": True,
         })
-        
-    # 5. Roads
-    rx_loop = max(0.10, rx_towers - 0.10 * bw)
-    ry_loop = max(0.10, ry_towers - 0.10 * bh)
-    
-    # South entry road (from entry_points[0] to southern edge of loop)
-    south_loop_y = cy + ry_loop
+
+    # ── 5. Roads — polygon-inset ring instead of ellipse ────────────────────
+    # Ring road: inset the inset_poly by another 8% to sit between towers and centre
+    ring_offset  = min(bw, bh) * 0.14
+    ring_poly    = _inset_polygon(boundary_poly if boundary_poly else inset_poly, ring_offset)
+
+    # Jogging track: slightly larger inset (closer to towers)
+    jog_offset   = min(bw, bh) * 0.05
+    jog_poly     = _inset_polygon(boundary_poly if boundary_poly else inset_poly, jog_offset)
+
+    south_loop_pt = min(ring_poly, key=lambda p: -p[1])  # southernmost
+    north_loop_pt = min(ring_poly, key=lambda p:  p[1])  # northernmost
+
     south_entry_pts = [
         [entry_points[0]["x_pct"], entry_points[0]["y_pct"]],
-        [round(cx, 4), round(south_loop_y, 4)]
+        [round(south_loop_pt[0],  4), round(south_loop_pt[1], 4)],
     ]
-    
-    # North entry road (from entry_points[1] to northern edge of loop)
-    north_loop_y = cy - ry_loop
     north_entry_pts = [
         [entry_points[1]["x_pct"], entry_points[1]["y_pct"]],
-        [round(cx, 4), round(north_loop_y, 4)]
+        [round(north_loop_pt[0],  4), round(north_loop_pt[1], 4)],
     ]
-    
-    # Inner loop points
-    inner_loop_pts = []
-    loop_num_pts = max(8, num_towers)
-    for i in range(loop_num_pts):
-        angle = (i * 2 * math.pi) / loop_num_pts
-        lx = cx + math.cos(angle) * rx_loop
-        ly = cy + math.sin(angle) * ry_loop
-        inner_loop_pts.append([round(lx, 4), round(ly, 4)])
-    inner_loop_pts.append([inner_loop_pts[0][0], inner_loop_pts[0][1]])
-    
+
     roads = [
-        { "id": "south_entry", "type": "primary", "width_meters": 12, "points": south_entry_pts, "tension": 0.0, "has_median": True, "has_sidewalks": True, "has_trees": True },
-        { "id": "north_entry", "type": "primary", "width_meters": 12, "points": north_entry_pts, "tension": 0.0, "has_sidewalks": True, "has_trees": True },
-        { "id": "inner_loop", "type": "ring_primary", "width_meters": 9, "points": inner_loop_pts, "tension": 0.4, "has_sidewalks": True, "has_trees": True }
+        {"id": "south_entry", "type": "primary",      "width_meters": 12, "points": south_entry_pts, "tension": 0.0, "has_median": True,  "has_sidewalks": True, "has_trees": True},
+        {"id": "north_entry", "type": "primary",      "width_meters": 12, "points": north_entry_pts, "tension": 0.0, "has_sidewalks": True,"has_trees": True},
+        {"id": "inner_loop",  "type": "ring_primary", "width_meters":  9, "points": ring_poly,       "tension": 0.3, "has_sidewalks": True,"has_trees": True},
     ]
-    
+
+    # Spur roads: each tower connects to nearest point on ring
     for t in towers:
-        tc_x = t["x_pct"] + t["width_pct"]/2
-        tc_y = t["y_pct"] + t["height_pct"]/2
-        closest_pt = min(inner_loop_pts[:-1], key=lambda p: (p[0] - tc_x)**2 + (p[1] - tc_y)**2)
+        tc_x = t["x_pct"] + t["width_pct"] / 2
+        tc_y = t["y_pct"] + t["height_pct"] / 2
+        closest = min(ring_poly[:-1], key=lambda p: (p[0]-tc_x)**2 + (p[1]-tc_y)**2)
         roads.append({
-            "id": f"spur_{t['id']}",
-            "type": "ring_secondary",
+            "id":           f"spur_{t['id']}",
+            "type":         "ring_secondary",
             "width_meters": 6,
-            "points": [[round(tc_x, 4), round(tc_y, 4)], [round(closest_pt[0], 4), round(closest_pt[1], 4)]],
-            "tension": 0.0
+            "points":       [[round(tc_x, 4), round(tc_y, 4)], [round(closest[0], 4), round(closest[1], 4)]],
+            "tension":      0.0,
         })
-        
-    # 6. Amenities
-    clubhouse_w = min(40.0 / site_width_m, 0.12)
+
+    # ── 6. Amenities — placed at centroid of inset poly ─────────────────────
+    clubhouse_w = min(40.0 / site_width_m,  0.12)
     clubhouse_h = min(25.0 / site_height_m, 0.08)
     clubhouse_x = cx - clubhouse_w / 2
-    clubhouse_y = cy - 0.08 * bh
-    
-    pool_w = min(25.0 / site_width_m, 0.08)
+    clubhouse_y = cy - clubhouse_h / 2 - 0.04 * bh
+
+    pool_w = min(25.0 / site_width_m,  0.08)
     pool_h = min(12.0 / site_height_m, 0.04)
-    pool_x = clubhouse_x + clubhouse_w + 0.02
+    pool_x = clubhouse_x + clubhouse_w + 0.015
     pool_y = clubhouse_y + (clubhouse_h - pool_h) / 2
-    
-    target_lawn_area = envelope["green_area_m2"]
-    lawn_ry_m = math.sqrt(target_lawn_area / (1.2 * math.pi))
-    lawn_rx_m = 1.2 * lawn_ry_m
-    
-    lawn_rx = round(lawn_rx_m / site_width_m, 4)
-    lawn_ry = round(lawn_ry_m / site_height_m, 4)
-    lawn_rx = max(0.03, min(0.12, lawn_rx))
-    lawn_ry = max(0.025, min(0.10, lawn_ry))
-    
-    lawn_cx = cx
-    lawn_cy = cy + 0.08 * bh
-    
-    tennis_w = min(24.0 / site_width_m, 0.07)
+
+    lawn_w = min(bw * 0.22, 0.14)
+    lawn_h = min(bh * 0.22, 0.10)
+    lawn_x = cx - lawn_w / 2
+    lawn_y = cy + 0.05 * bh
+
+    tennis_w = min(24.0 / site_width_m,  0.07)
     tennis_h = min(11.0 / site_height_m, 0.04)
-    tennis_x = cx - 0.15 * bw - tennis_w
+    tennis_x = cx - 0.14 * bw - tennis_w
     tennis_y = cy
-    
-    kids_w = min(15.0 / site_width_m, 0.05)
+
+    kids_w = min(15.0 / site_width_m,  0.05)
     kids_h = min(15.0 / site_height_m, 0.05)
-    kids_x = cx + 0.12 * bw - kids_w
-    kids_y = cy + 0.18 * bh
-    
+    kids_x = cx + 0.10 * bw
+    kids_y = cy + 0.14 * bh
+
     amenities = [
-        { "id": "clubhouse", "type": "clubhouse", "label": "Grand Clubhouse", "shape": "rect", "x_pct": round(clubhouse_x, 4), "y_pct": round(clubhouse_y, 4), "width_pct": round(clubhouse_w, 4), "height_pct": round(clubhouse_h, 4) },
-        { "id": "swimming_pool", "type": "pool", "label": "Luxury Pool", "shape": "rect", "x_pct": round(pool_x, 4), "y_pct": round(pool_y, 4), "width_pct": round(pool_w, 4), "height_pct": round(pool_h, 4) },
-        { "id": "central_lawn", "type": "central_lawn", "label": "Central Green", "shape": "ellipse", "cx_pct": round(lawn_cx, 4), "cy_pct": round(lawn_cy, 4), "rx_pct": round(lawn_rx, 4), "ry_pct": round(lawn_ry, 4) },
-        { "id": "tennis_court", "type": "sports", "label": "Tennis Court", "shape": "rect", "x_pct": round(tennis_x, 4), "y_pct": round(tennis_y, 4), "width_pct": round(tennis_w, 4), "height_pct": round(tennis_h, 4) },
-        { "id": "kids_play", "type": "kids", "label": "Kids Play Zone", "shape": "rect", "x_pct": round(kids_x, 4), "y_pct": round(kids_y, 4), "width_pct": round(kids_w, 4), "height_pct": round(kids_h, 4) }
+        {"id": "clubhouse",    "type": "clubhouse",    "label": "Grand Clubhouse", "shape": "rect",    "x_pct": round(clubhouse_x, 4), "y_pct": round(clubhouse_y, 4), "width_pct": round(clubhouse_w, 4), "height_pct": round(clubhouse_h, 4)},
+        {"id": "swimming_pool","type": "pool",          "label": "Luxury Pool",     "shape": "rect",    "x_pct": round(pool_x,      4), "y_pct": round(pool_y,      4), "width_pct": round(pool_w,      4), "height_pct": round(pool_h,      4)},
+        {"id": "central_lawn", "type": "central_lawn",  "label": "Central Green",   "shape": "rect",    "x_pct": round(lawn_x,      4), "y_pct": round(lawn_y,      4), "width_pct": round(lawn_w,      4), "height_pct": round(lawn_h,      4)},
+        {"id": "tennis_court", "type": "sports",        "label": "Tennis Court",    "shape": "rect",    "x_pct": round(tennis_x,    4), "y_pct": round(tennis_y,    4), "width_pct": round(tennis_w,    4), "height_pct": round(tennis_h,    4)},
+        {"id": "kids_play",    "type": "kids",          "label": "Kids Play Zone",  "shape": "rect",    "x_pct": round(kids_x,      4), "y_pct": round(kids_y,      4), "width_pct": round(kids_w,      4), "height_pct": round(kids_h,      4)},
     ]
-    
-    # 7. Pedestrian Paths
-    jog_pts = []
-    rx_jog = rx_towers + 0.06 * bw
-    ry_jog = ry_towers + 0.06 * bh
-    jog_num_pts = max(8, num_towers)
-    for i in range(jog_num_pts):
-        angle = (i * 2 * math.pi) / jog_num_pts
-        jx = cx + math.cos(angle) * rx_jog
-        jy = cy + math.sin(angle) * ry_jog
-        jog_pts.append([round(jx, 4), round(jy, 4)])
-    jog_pts.append([jog_pts[0][0], jog_pts[0][1]])
-    
+
+    # ── 7. Jogging track — polygon inset ────────────────────────────────────
     pedestrian_paths = [
-        { "id": "jogging_track", "type": "pedestrian", "points": jog_pts, "tension": 0.4, "width_meters": 2 }
+        {"id": "jogging_track", "type": "pedestrian", "points": jog_poly, "tension": 0.3, "width_meters": 2},
     ]
-    
-    # 8. Landscape tree clusters
-    tree_clusters = []
-    for i in range(num_towers):
-        angle = ((i + 0.5) * 2 * math.pi) / num_towers
-        tx = cx + math.cos(angle) * (rx_towers + 0.08 * bw)
-        ty = cy + math.sin(angle) * (ry_towers + 0.08 * bh)
-        tree_clusters.append({
-            "id": f"tc_{i}",
-            "cx_pct": round(tx, 4),
-            "cy_pct": round(ty, 4),
-            "radius_pct": 0.03,
-            "density": "medium"
-        })
-        
+
+    # ── 8. Tree clusters — fill perimeter grid cells not used by towers ──────
+    tree_candidates = _grid_cells_in_polygon(jog_poly, tw * 1.2, th * 1.2)
+    tower_centres   = {(t["x_pct"] + t["width_pct"]/2, t["y_pct"] + t["height_pct"]/2) for t in towers}
+    tree_clusters   = []
+    used = 0
+    for (tcx, tcy) in reversed(tree_candidates):  # reversed = perimeter first
+        too_close = any(math.hypot(tcx - px, tcy - py) < tw * 1.5 for (px, py) in tower_centres)
+        if not too_close:
+            tree_clusters.append({
+                "id":        f"tc_{used}",
+                "cx_pct":    round(tcx, 4),
+                "cy_pct":    round(tcy, 4),
+                "radius_pct": 0.025,
+                "density":   "medium",
+            })
+            used += 1
+            if used >= num_towers:
+                break
+
     return {
         "project": {
-            "name": name,
-            "total_area_acres": round((site_width_m * site_height_m) / 4047.0, 2),
-            "total_towers": num_towers,
-            "theme": theme,
-            "actual_coverage_ratio": round(actual_coverage_ratio, 4),
-            "actual_far": round(actual_far, 4),
-            "utilization_pct": 0.0
+            "name":                   name,
+            "total_area_acres":       round((site_width_m * site_height_m) / 4047.0, 2),
+            "total_towers":           num_towers,
+            "theme":                  theme,
+            "actual_coverage_ratio":  round(actual_coverage_ratio, 4),
+            "actual_far":             round(actual_far, 4),
+            "utilization_pct":        0.0,
         },
         "land_use": {
-            "residential_pct": round(actual_coverage_ratio * 100.0, 2),
-            "roads_pct": 12.0,
-            "amenities_pct": 8.0,
-            "open_spaces_pct": round(100.0 - actual_coverage_ratio * 100.0 - 20.0, 2),
-            "parks_pct": green_area_pct
+            "residential_pct":   round(actual_coverage_ratio * 100.0, 2),
+            "roads_pct":         12.0,
+            "amenities_pct":     8.0,
+            "open_spaces_pct":   round(100.0 - actual_coverage_ratio * 100.0 - 20.0, 2),
+            "parks_pct":         green_area_pct,
         },
-        "entry_points": entry_points,
-        "roads": roads,
-        "towers": towers,
-        "amenities": amenities,
+        "entry_points":    entry_points,
+        "roads":           roads,
+        "towers":          towers,
+        "amenities":       amenities,
         "pedestrian_paths": pedestrian_paths,
         "landscape": {
-            "tree_clusters": tree_clusters,
+            "tree_clusters":  tree_clusters,
             "water_features": [],
-            "green_buffers": []
-        }
+            "green_buffers":  [],
+        },
     }
 
 def merge_layout_choices(template_layout: dict, claude_layout: dict) -> dict:

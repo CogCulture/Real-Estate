@@ -192,13 +192,13 @@ def draw_mock_site_plan(layout: dict, output_path: str):
         c_left = (int(r * 0.7), int(g * 0.7), int(b * 0.7))
         c_right = (int(r * 0.88), int(g * 0.88), int(b * 0.88))
         
-        # Shadows projected to ground
-        s_offset_x = H * 0.35
-        s_offset_y = H * 0.18
-        s0 = (g0[0] + s_offset_x * scale, g0[1] + s_offset_y * scale)
-        s1 = (g1[0] + s_offset_x * scale, g1[1] + s_offset_y * scale)
-        s2 = (g2[0] + s_offset_x * scale, g2[1] + s_offset_y * scale)
-        s3 = (g3[0] + s_offset_x * scale, g3[1] + s_offset_y * scale)
+        # Shadows projected to ground (using world-space offset projected properly)
+        sh_x = H * 0.5
+        sh_y = H * 0.5
+        s0 = project(bx + sh_x, by + sh_y, 0)
+        s1 = project(bx + build_w + sh_x, by + sh_y, 0)
+        s2 = project(bx + build_w + sh_x, by + build_h + sh_y, 0)
+        s3 = project(bx + sh_x, by + build_h + sh_y, 0)
         
         def draw_shadow(d):
             # Draw building shadow on ground
@@ -225,14 +225,13 @@ def draw_mock_site_plan(layout: dict, output_path: str):
                 
         depth = bx + by + build_w/2 + build_h/2
         return depth, draw_shadow, draw_building
-
+ 
     # Helper for Trees
     def make_tree_draw(tx, ty, size='md'):
         H = 7.0 if size == 'sm' else 11.0 if size == 'lg' else 9.0
         radius = 16.0 if size == 'sm' else 32.0 if size == 'lg' else 24.0
         
-        g_center = project(tx, ty, 0)
-        s_center = (g_center[0] + H * 0.35 * scale, g_center[1] + H * 0.18 * scale)
+        s_center = project(tx + H * 0.5, ty + H * 0.5, 0)
         t_center = project(tx, ty, H)
         
         def draw_shadow(d):
