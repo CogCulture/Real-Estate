@@ -4,10 +4,14 @@ import uuid
 import json
 import os
 import litellm
+import logging
 from database import get_db
 from models import AiSuggestRequest, ApiUsageResponse
 import aiosqlite
 from planning_engine import BoundaryEngine, CollisionEngine, generate_report, get_boundary_coords_pct, get_polygon_centroid, resolve_layout, generate_procedural_fallback, merge_layout_choices, resolve_selected_slots
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -67,6 +71,7 @@ OUTPUT RULES:
 
 @router.post("/suggest")
 async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = Depends(get_db)):
+    logger.info(f"Starting /suggest request for site {request.site_width_m}m x {request.site_height_m}m")
     model_name = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620")
     api_key = os.environ.get("VITE_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
     
@@ -81,19 +86,11 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
     road_12m_pct = 12.0 / sw
 
     try:
-
-        # Fetch features and boundary_geojson from DB
-        async with db.execute("SELECT features, boundary_geojson FROM projects WHERE id = ?", (request.project_id,)) as cursor:
-            row = await cursor.fetchone()
-            if row:
-                try:
-                    project_features = json.loads(row['features']) if row['features'] else None
-                except json.JSONDecodeError:
-                    project_features = None
-                boundary_geojson = row['boundary_geojson']
-            else:
-                project_features = None
-                boundary_geojson = None
+        site_width_m = request.site_width_m
+        site_height_m = request.site_height_m
+        boundary_geojson = request.boundary_geojson
+        project_features = request.project_features or {}
+        sw, sh = site_width_m, site_height_m
 
         # Build boundary coordinates and centroid if boundary geojson exists
         boundary_coords_str = ""
@@ -322,6 +319,7 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
                     
                     grade = report.get("grade", "F")
                     if grade in ("A", "B"):
+                        logger.info(f"Claude AI path succeeded with grade {grade}")
                         collision_result["validation"] = report
                         return collision_result
                     else:
@@ -347,10 +345,11 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
                         messages.append({"role": "assistant", "content": content})
                         messages.append({"role": "user", "content": "Failed to parse JSON. Please return ONLY a valid JSON object without any additional conversational text or markdown code blocks."})
             except Exception as e:
-                print(f"litellm attempt {attempt} failed: {e}")
+                logger.error(f"litellm attempt {attempt} failed: {e}")
                 if attempt >= MAX_ATTEMPTS - 1:
                     raise e
-                    
+
+        logger.info("Claude AI path exhausted, falling back to procedural generation")
         # Fallback layout generation
         fallback_layout = generate_procedural_fallback(sw, sh, project_features, boundary_poly)
         fallback_layout = resolve_layout(fallback_layout, boundary_poly, sw, sh, project_features)
