@@ -178,7 +178,7 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
 
         # Generate the procedural geometry template first
         template_layout = generate_procedural_fallback(sw, sh, project_features, boundary_poly)
-        template_layout = resolve_layout(template_layout, boundary_poly)
+        template_layout = resolve_layout(template_layout, boundary_poly, sw, sh, project_features)
 
         # Build candidate slots list for Claude selection
         candidate_slots_list = []
@@ -302,7 +302,7 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
 
                     # Merge Claude's custom attributes into our safe procedural geometry template
                     merged_layout = merge_layout_choices(template_layout, layout_json)
-                    merged_layout = resolve_layout(merged_layout, boundary_poly)
+                    merged_layout = resolve_layout(merged_layout, boundary_poly, sw, sh, project_features)
                     
                     raw = merged_layout
                     boundary_result = BoundaryEngine().process(raw, boundary_geojson=boundary_geojson, site_width=sw, site_height=sh)
@@ -310,7 +310,7 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
                     
                     # If there are conflicts or violations, run resolve_layout and engines a second time to ensure correctness
                     if collision_result.get("conflicts") or collision_result.get("boundary_violations"):
-                        merged_layout = resolve_layout(collision_result, boundary_poly)
+                        merged_layout = resolve_layout(collision_result, boundary_poly, sw, sh, project_features)
                         boundary_result = BoundaryEngine().process(merged_layout, boundary_geojson=boundary_geojson, site_width=sw, site_height=sh)
                         collision_result = CollisionEngine().process(boundary_result)
                         
@@ -353,7 +353,7 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
                     
         # Fallback layout generation
         fallback_layout = generate_procedural_fallback(sw, sh, project_features, boundary_poly)
-        fallback_layout = resolve_layout(fallback_layout, boundary_poly)
+        fallback_layout = resolve_layout(fallback_layout, boundary_poly, sw, sh, project_features)
         
         boundary_result = BoundaryEngine().process(fallback_layout, boundary_geojson=boundary_geojson, site_width=sw, site_height=sh)
         collision_result = CollisionEngine().process(boundary_result)
