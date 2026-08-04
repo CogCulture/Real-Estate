@@ -96,6 +96,9 @@ MIN_SETBACK_M = 6.0
 PRIMARY_ROAD_WIDTH = 12.0
 SECONDARY_ROAD_WIDTH = 9.0
 
+MIN_TOWER_FOOTPRINT_SQM = 180.0  # Existing clamp: 12m x 15m
+MIN_FOOTPRINT_RATIO = 0.6        # Can shrink to 60% of target, not below
+
 def get_unit_size(unit_type_str: str) -> float:
     t = str(unit_type_str).upper().replace(" ", "")
     if "1BHK" in t: return 50.0
@@ -105,6 +108,76 @@ def get_unit_size(unit_type_str: str) -> float:
     if "4BHK" in t: return 180.0
     if "PENTHOUSE" in t: return 250.0
     return 120.0
+
+def compute_max_footprint_at_cell(cx, cy, poly, max_w, max_h, step_ratio=0.95, min_w=0.0, min_h=0.0):
+    """
+    Find the largest axis-aligned rectangle centered at (cx, cy), up to
+    (max_w, max_h), whose 4 corners all lie inside poly.
+    Approach: binary-search-style shrink. Start at (max_w, max_h). If any
+    corner is outside poly, multiply both dimensions by step_ratio and
+    retest. Stop when either (a) all corners are inside poly, or
+    (b) width or height has shrunk below (min_w, min_h) — in which case
+    return (0, 0) to signal "no valid footprint at this cell."
+    """
+    w, h = max_w, max_h
+    while w >= min_w and h >= min_h:
+        corners = [
+            (cx - w/2, cy - h/2), (cx + w/2, cy - h/2),
+            (cx - w/2, cy + h/2), (cx + w/2, cy + h/2),
+        ]
+        if all(is_point_in_polygon(px, py, poly) for px, py in corners):
+            return (w, h)
+        w *= step_ratio
+        h *= step_ratio
+    return (0.0, 0.0)
+
+# NOTE: These values duplicate src/knowledge/jurisdictions/india/nbc.ts
+# TODO: Extract to shared JSON config to prevent drift (resolveJsonModule not enabled in tsconfig)
+NBC_ROAD_WIDTHS = {
+    "primary_min": 12.0,
+    "secondary_min": 9.0,
+    "access_min": 6.0
+}
+
+def get_road_width(road_type: str, total_units: int, branch_units: int = 0) -> float:
+    """Return road width in meters based on type and unit count."""
+    if road_type in ("access", "spur"):
+        return 7.5 if branch_units > 150 else 6.0
+    if road_type in ("primary", "entry"):
+        if total_units < 300: return 12.0
+        if total_units <= 800: return 15.0
+        return 18.0
+    if road_type in ("secondary", "ring_primary"):
+        if total_units < 300: return 9.0
+        if total_units <= 800: return 12.0
+        return 15.0
+    return 6.0  # fallback
+
+def generate_candidate_slots(inset_poly, num_towers, ideal_tw, ideal_th, multiplier=1.75):
+    """Generate pool of valid candidate slots (multiplier x required count)."""
+    gap_w = ideal_tw * 0.6
+    gap_h = ideal_th * 0.6
+    cell_w = ideal_tw + gap_w
+    cell_h = ideal_th + gap_h
+
+    candidates = _grid_cells_in_polygon(inset_poly, cell_w, cell_h)
+
+    enriched_candidates = []
+    for (cx, cy) in candidates:
+        max_w, max_h = compute_max_footprint_at_cell(cx, cy, inset_poly, ideal_tw, ideal_th)
+        if max_w == 0.0 or max_h == 0.0:
+            continue  # no valid footprint here, exclude from pool
+        enriched_candidates.append({
+            "id": f"slot_{len(enriched_candidates)}",
+            "cx": cx, "cy": cy,
+            "max_width_pct": max_w, "max_height_pct": max_h,
+        })
+
+    cx, cy = get_polygon_centroid(inset_poly)
+    enriched_candidates.sort(key=lambda s: math.hypot(s["cx"] - cx, s["cy"] - cy), reverse=True)
+
+    pool_size = min(len(enriched_candidates), int(num_towers * multiplier))
+    return enriched_candidates[:pool_size]
 
 def compute_buildable_envelope(boundary_poly: list, setbacks_m: Any, site_width_m: float, site_height_m: float, green_area_pct: float) -> dict:
     if not boundary_poly:
@@ -276,15 +349,38 @@ class BoundingBox:
             "element_id": self.element_id
         }
 
-SETBACKS = {
-    ("tower", "tower"): 0.04,
-    ("tower", "road"): 0.03,
-    ("tower", "boundary"): 0.05,
-    ("amenity", "road"): 0.02,
-    ("amenity", "tower"): 0.02,
-    ("amenity", "boundary"): 0.04,
-    ("amenity", "amenity"): 0.02,
+# Default spacing requirements in meters (fallback if not in project_features)
+DEFAULT_SPACING_M = {
+    ("tower", "tower"): 15.0,
+    ("tower", "road"): 12.0,
+    ("tower", "boundary"): 18.0,
+    ("amenity", "road"): 8.0,
+    ("amenity", "tower"): 10.0,
+    ("amenity", "boundary"): 12.0,
+    ("amenity", "amenity"): 8.0,
 }
+
+def get_spacing_pct(type_a: str, type_b: str, site_width_m: float, site_height_m: float, project_features: dict = None) -> float:
+    """Convert meter-based spacing to percentage based on site dimensions."""
+    # Check if user provided custom spacing in meters
+    key = (type_a, type_b)
+    if key not in DEFAULT_SPACING_M:
+        key = (type_b, type_a)  # Try reversed order
+    
+    spacing_m = DEFAULT_SPACING_M.get(key, 10.0)
+    
+    # Allow override via project_features
+    if project_features:
+        feature_key = f"{type_a}_{type_b}_spacing_m"
+        if feature_key in project_features:
+            try:
+                spacing_m = float(project_features[feature_key])
+            except:
+                pass
+    
+    # Convert to percentage (use smaller dimension for consistency)
+    min_dim = min(site_width_m, site_height_m)
+    return spacing_m / min_dim if min_dim > 0 else 0.02
 
 class BoundaryEngine:
     MARGIN = 0.06
@@ -387,16 +483,16 @@ class BoundaryEngine:
         return masterplan_json
 
 class CollisionEngine:
-    def process(self, masterplan_json: dict) -> dict:
+    def process(self, masterplan_json: dict, site_width_m: float = 500.0, site_height_m: float = 300.0, project_features: dict = None) -> dict:
         conflicts = []
         boxes = []
-        
+
         if "towers" in masterplan_json:
             for t in masterplan_json["towers"]:
                 w = t.get("width_pct", 0)
                 h = t.get("height_pct", 0)
                 boxes.append(BoundingBox(t.get("x_pct", 0), t.get("y_pct", 0), w, h, "tower", t.get("id", "unknown")))
-                
+
         if "amenities" in masterplan_json:
             for a in masterplan_json["amenities"]:
                 is_ellipse = "cx_pct" in a and "rx_pct" in a
@@ -408,18 +504,17 @@ class CollisionEngine:
                 else:
                     x = a.get("x_pct", 0.0)
                     y = a.get("y_pct", 0.0)
-                    
+
                 boxes.append(BoundingBox(x, y, w, h, "amenity", a.get("id", "unknown")))
-                
+
         for i in range(len(boxes)):
             for j in range(i + 1, len(boxes)):
                 box_a = boxes[i]
                 box_b = boxes[j]
-                
-                # Check required setback padding
-                required_gap = SETBACKS.get((box_a.element_type, box_b.element_type), 
-                                          SETBACKS.get((box_b.element_type, box_a.element_type), 0.0))
-                
+
+                # Check required setback padding (now using meter-based spacing converted to pct)
+                required_gap = get_spacing_pct(box_a.element_type, box_b.element_type, site_width_m, site_height_m, project_features)
+
                 # Use half the required gap as padding for each box so they sum to the full gap
                 padding = required_gap / 2.0
                 
@@ -678,7 +773,7 @@ def resolve_layout(masterplan_json: dict, boundary_poly: list = None) -> dict:
         elements.append(a)
         
     # Solve constraints
-    solver = ConstraintSolver(boundary_poly)
+    solver = ConstraintSolver(boundary_poly, site_width_m, site_height_m, project_features)
     solver.solve(elements, iterations=100, roads=roads, paths=paths)
     
     # Update back to masterplan_json
@@ -1004,47 +1099,67 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
          "y_pct": round(min_y, 4), "type": "secondary", "label": "Secondary Entry / Exit"},
     ]
 
-    # ── 4. Tower placement — polygon-aware grid ──────────────────────────────
-    # Build grid of candidate cells inside the inset polygon
-    # Cell spacing = tower footprint + gap
-    gap_w = tw * 0.6
-    gap_h = th * 0.6
-    cell_w = tw + gap_w
-    cell_h = th + gap_h
+    # ── 4. Tower placement — polygon-aware grid with size-aware packing ───────
+    # Generate candidate slot pool for Claude selection
+    multiplier = project_features.get("candidate_pool_multiplier", 1.75) if project_features else 1.75
+    multiplier = max(1.2, min(3.0, multiplier))  # Clamp to [1.2, 3.0]
 
-    candidates = _grid_cells_in_polygon(inset_poly, cell_w, cell_h)
+    candidate_slots = generate_candidate_slots(inset_poly, num_towers, tw, th, multiplier)
 
-    # Sort: prefer cells near the polygon boundary first (perimeter-first placement)
-    # gives the "ring of towers around the centre" feel without an ellipse
-    def dist_to_centroid(cell):
-        return math.hypot(cell[0] - cx, cell[1] - cy)
+    # If insufficient valid slots, reduce num_towers
+    if len(candidate_slots) < num_towers:
+        num_towers = max(4, len(candidate_slots))
+        # Recompute budget with reduced tower count
+        total_footprint = num_towers * footprint_area_sqm
+        total_floor = num_towers * units_per_tower * avg_unit_size
+        if total_footprint > max_footprint_budget or total_floor > max_floor_budget:
+            scale = min(max_footprint_budget / total_footprint, max_floor_budget / total_floor)
+            footprint_area_sqm *= scale
 
-    candidates.sort(key=dist_to_centroid, reverse=True)  # perimeter first
-
-    # Trim or expand candidate list to exactly num_towers
-    if len(candidates) >= num_towers:
-        # Pick evenly-spaced subset around the perimeter
-        step = len(candidates) / num_towers
-        chosen = [candidates[int(i * step) % len(candidates)] for i in range(num_towers)]
-    elif candidates:
-        # Fewer cells than towers — repeat as needed
-        chosen = (candidates * ((num_towers // len(candidates)) + 1))[:num_towers]
+    # For procedural fallback, select evenly-spaced slots from pool
+    if len(candidate_slots) >= num_towers:
+        step = len(candidate_slots) / num_towers
+        chosen = [candidate_slots[int(i * step) % len(candidate_slots)] for i in range(num_towers)]
+    elif candidate_slots:
+        chosen = (candidate_slots * ((num_towers // len(candidate_slots)) + 1))[:num_towers]
     else:
-        # Absolute fallback: use centroid with offsets
-        chosen = [(cx + (i - num_towers / 2) * tw * 1.5, cy) for i in range(num_towers)]
+        # Absolute fallback: use centroid with offsets (should rarely happen)
+        chosen = [{"cx": cx + (i - num_towers / 2) * tw * 1.5, "cy": cy,
+                   "max_width_pct": tw, "max_height_pct": th} for i in range(num_towers)]
 
     footprints = ["cruciform", "h_shaped", "u_shaped", "courtyard"]
     towers = []
-    for i, (tcx, tcy) in enumerate(chosen):
+    for i, slot in enumerate(chosen):
+        tcx, tcy = slot["cx"], slot["cy"]
+        # Use max available if ideal doesn't fit, otherwise use ideal
+        ideal_w_m = tw_m
+        ideal_h_m = th_m
+        slot_w_pct = slot["max_width_pct"]
+        slot_h_pct = slot["max_height_pct"]
+        slot_w_m = slot_w_pct * site_width_m
+        slot_h_m = slot_h_pct * site_height_m
+
+        if slot_w_m >= ideal_w_m and slot_h_m >= ideal_h_m:
+            # Ideal fits, use it
+            final_w_m = ideal_w_m
+            final_h_m = ideal_h_m
+        else:
+            # Shrink to max available at this slot
+            final_w_m = slot_w_m
+            final_h_m = slot_h_m
+
+        final_w_pct = round(final_w_m / site_width_m, 4)
+        final_h_pct = round(final_h_m / site_height_m, 4)
+        
         letter = chr(65 + i)
         towers.append({
             "id":                  f"tower_{letter.lower()}",
             "label":               f"Tower {letter}",
             "footprint":           random.choice(footprints),
-            "x_pct":               round(tcx - tw / 2, 4),
-            "y_pct":               round(tcy - th / 2, 4),
-            "width_pct":           tw,
-            "height_pct":          th,
+            "x_pct":               round(tcx - final_w_pct / 2, 4),
+            "y_pct":               round(tcy - final_h_pct / 2, 4),
+            "width_pct":           final_w_pct,
+            "height_pct":          final_h_pct,
             "rotation_deg":        0,
             "floors":              floors,
             "units":               units_per_tower,
@@ -1075,20 +1190,23 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
         [round(north_loop_pt[0],  4), round(north_loop_pt[1], 4)],
     ]
 
+    # Calculate total units for road width scaling
+    total_units = num_towers * units_per_tower
+
     roads = [
-        {"id": "south_entry", "type": "primary",      "width_meters": 12, "points": south_entry_pts, "tension": 0.0, "has_median": True,  "has_sidewalks": True, "has_trees": True},
-        {"id": "north_entry", "type": "primary",      "width_meters": 12, "points": north_entry_pts, "tension": 0.0, "has_sidewalks": True,"has_trees": True},
-        {"id": "inner_loop",  "type": "ring_primary", "width_meters":  9, "points": ring_poly,       "tension": 0.3, "has_sidewalks": True,"has_trees": True},
+        {"id": "south_entry", "type": "entry", "width_meters": get_road_width("entry", total_units), "points": south_entry_pts, "tension": 0.0, "has_median": True,  "has_sidewalks": True, "has_trees": True},
+        {"id": "north_entry", "type": "entry", "width_meters": get_road_width("entry", total_units), "points": north_entry_pts, "tension": 0.0, "has_sidewalks": True,"has_trees": True},
+        {"id": "inner_loop",  "type": "ring_primary", "width_meters": get_road_width("ring_primary", total_units), "points": ring_poly,       "tension": 0.3, "has_sidewalks": True,"has_trees": True},
     ]
 
     # Spur roads: each tower connects to nearest point on ring
     for t in towers:
         tc_x = t["x_pct"] + t["width_pct"] / 2
         tc_y = t["y_pct"] + t["height_pct"] / 2
-        
+
         # Sort ring points by distance to tower center
         sorted_ring_pts = sorted(ring_poly[:-1], key=lambda p: (p[0]-tc_x)**2 + (p[1]-tc_y)**2)
-        
+
         chosen_conn = None
         for candidate in sorted_ring_pts:
             # Check containment of 10 sampled points along the spur segment
@@ -1103,16 +1221,16 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
             if valid:
                 chosen_conn = candidate
                 break
-                
+
         # Fallback to the absolute closest one if no fully contained spur segment was found
         if not chosen_conn and sorted_ring_pts:
             chosen_conn = sorted_ring_pts[0]
-            
+
         if chosen_conn:
             roads.append({
                 "id":           f"spur_{t['id']}",
-                "type":         "ring_secondary",
-                "width_meters": 6,
+                "type":         "spur",
+                "width_meters": get_road_width("spur", total_units, branch_units=units_per_tower),
                 "points":       [[round(tc_x, 4), round(tc_y, 4)], [round(chosen_conn[0], 4), round(chosen_conn[1], 4)]],
                 "tension":      0.0,
             })
@@ -1220,34 +1338,42 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
         pk_pct = round((pk_pct / total_pct) * 100.0, 2)
         op_pct = round(100.0 - res_pct - rd_pct - am_pct - pk_pct, 2)
 
-    return {
-        "project": {
-            "name":                   name,
-            "total_area_acres":       round((site_width_m * site_height_m) / 4047.0, 2),
-            "total_towers":           num_towers,
-            "theme":                  theme,
-            "actual_coverage_ratio":  round(actual_coverage_ratio, 4),
-            "actual_far":             round(actual_far, 4),
-            "utilization_pct":        0.0,
-        },
-        "land_use": {
-            "residential_pct":   res_pct,
-            "roads_pct":         rd_pct,
-            "amenities_pct":     am_pct,
-            "open_spaces_pct":   op_pct,
-            "parks_pct":         pk_pct,
-        },
-        "entry_points":    entry_points,
-        "roads":           roads,
-        "towers":          towers,
-        "amenities":       amenities,
-        "pedestrian_paths": pedestrian_paths,
-        "landscape": {
-            "tree_clusters":  tree_clusters,
-            "water_features": [],
-            "green_buffers":  [],
-        },
+    land_use = {
+        "residential": res_pct,
+        "roads": rd_pct,
+        "amenities": am_pct,
+        "parks": pk_pct,
+        "other": op_pct
     }
+
+    return {
+        "towers": towers,
+        "amenities": amenities,
+        "roads": roads,
+        "pedestrian_paths": pedestrian_paths,
+        "tree_clusters": tree_clusters,
+        "land_use": land_use,
+        "site_width_m": site_width_m,
+        "site_height_m": site_height_m,
+        "buildable_area_m2": buildable_area,
+        "boundary_poly": boundary_poly,
+        "inset_poly": inset_poly,
+        "entry_points": entry_points,
+        "candidate_slots": candidate_slots,
+    }
+
+def resolve_selected_slots(selected_ids: list, candidate_pool: list) -> tuple[list, list]:
+    """Returns (valid_slots, invalid_ids). Caller must handle invalid_ids
+    by feeding an error back into the same retry loop used for grade
+    failures — never silently drop or silently substitute a random slot."""
+    pool_by_id = {s["id"]: s for s in candidate_pool}
+    valid, invalid = [], []
+    for sid in selected_ids:
+        if sid in pool_by_id:
+            valid.append(pool_by_id[sid])
+        else:
+            invalid.append(sid)
+    return valid, invalid
 
 def merge_layout_choices(template_layout: dict, claude_layout: dict) -> dict:
     if not claude_layout:
@@ -1401,15 +1527,16 @@ def nearest_point_on_polygon(x: float, y: float, poly: list) -> tuple:
 
 
 class ConstraintSolver:
-    def __init__(self, boundary_poly: list = None, site_width: float = 500.0, site_height: float = 300.0):
+    def __init__(self, boundary_poly: list = None, site_width: float = 500.0, site_height: float = 300.0, project_features: dict = None):
         self.boundary_poly = boundary_poly
         self.site_width = site_width
         self.site_height = site_height
+        self.project_features = project_features
         if boundary_poly:
             self.cx, self.cy = get_polygon_centroid(boundary_poly)
         else:
             self.cx, self.cy = 0.5, 0.52
-            
+
     def solve(self, elements: list, iterations: int = 100, roads: list = None, paths: list = None) -> list:
         if roads is None: roads = []
         if paths is None: paths = []
@@ -1436,7 +1563,7 @@ class ConstraintSolver:
                     cy_b = el_b.get("cy_pct", el_b.get("y_pct", 0.0) + h_b/2.0)
                     type_b = el_b.get("type", "tower")
                     
-                    required_gap = SETBACKS.get((type_a, type_b), SETBACKS.get((type_b, type_a), 0.02))
+                    required_gap = get_spacing_pct(type_a, type_b, self.site_width, self.site_height, self.project_features)
                     min_dist_x = (w_a + w_b) / 2.0 + required_gap
                     min_dist_y = (h_a + h_b) / 2.0 + required_gap
                     

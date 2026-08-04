@@ -7,24 +7,27 @@ import litellm
 from database import get_db
 from models import AiSuggestRequest, ApiUsageResponse
 import aiosqlite
-from planning_engine import BoundaryEngine, CollisionEngine, generate_report, get_boundary_coords_pct, get_polygon_centroid, resolve_layout, generate_procedural_fallback, merge_layout_choices
+from planning_engine import BoundaryEngine, CollisionEngine, generate_report, get_boundary_coords_pct, get_polygon_centroid, resolve_layout, generate_procedural_fallback, merge_layout_choices, resolve_selected_slots
 
 router = APIRouter()
 
 SYSTEM_PROMPT = """You are an expert luxury masterplan configuration engine. You produce ONLY valid JSON. No markdown, no explanation, no preamble — just raw JSON.
-Your task is to configure the semantic choices, styling, and metadata for a pre-calculated layout template. The positions and dimensions of all structures (towers, roads, amenities) have been mathematically pre-calculated to respect setbacks, boundaries, and collision safety."""
+Your task is to SELECT valid tower positions from a pre-validated candidate pool and configure semantic choices for the layout. All candidate slots have been mathematically pre-calculated to respect setbacks, boundaries, and collision safety."""
 
 USER_PROMPT_TEMPLATE = """Configure a luxury masterplan layout for a site that is {site_width_m}m wide x {site_height_m}m tall.
 
-PRE-CALCULATED SITE GEOMETRY TEMPLATE:
-Towers to configure:
-{towers_list}
+CANDIDATE TOWER SLOTS (pre-validated for containment/spacing):
+{candidate_slots_list}
+
+Your task: SELECT exactly {total_towers} slots from the pool above by ID.
+Assign each selected slot: label, footprint, rotation, floors, units, unit_type.
 
 Amenities to configure:
 {amenities_list}
 
 REQUIRED OUTPUT JSON STRUCTURE:
 {{
+  "selected_tower_slots": ["slot_0", "slot_3", "slot_7"],  // Exactly {total_towers} slot IDs from the pool above
   "project": {{ "name": "...", "total_area_acres": ..., "total_towers": {total_towers}, "theme": "..." }},
   "land_use": {{ "residential_pct": ..., "roads_pct": ..., "amenities_pct": ..., "open_spaces_pct": ..., "parks_pct": ... }},
   "towers": [
@@ -57,7 +60,8 @@ REQUIRED OUTPUT JSON STRUCTURE:
 
 OUTPUT RULES:
 - Return ONLY the JSON object. Zero other text.
-- Match the number of towers exactly: generate configurations for all {total_towers} towers.
+- You may only select from the provided slot IDs. Do not invent new coordinates.
+- selected_tower_slots must contain exactly {total_towers} valid slot IDs from the pool.
 - Match amenity IDs exactly as provided.
 - Customize tower heights, unit distributions, footprints, naming, and theme to align with the client preferences below."""
 
@@ -175,30 +179,53 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
         # Generate the procedural geometry template first
         template_layout = generate_procedural_fallback(sw, sh, project_features, boundary_poly)
         template_layout = resolve_layout(template_layout, boundary_poly)
-        
-        towers_list = []
-        for t in template_layout.get("towers", []):
-            towers_list.append(f"- ID: {t['id']}, Predefined Center: ({t['x_pct'] + t['width_pct']/2:.4f}, {t['y_pct'] + t['height_pct']/2:.4f})")
-        towers_list_str = "\n".join(towers_list)
-        
+
+        # Build candidate slots list for Claude selection
+        candidate_slots_list = []
+        for slot in template_layout.get("candidate_slots", []):
+            candidate_slots_list.append(f"- ID: {slot['id']}, Center: ({slot['cx']:.4f}, {slot['cy']:.4f}), Max Footprint: {slot['max_width_pct']:.4f} x {slot['max_height_pct']:.4f}")
+        candidate_slots_str = "\n".join(candidate_slots_list)
+
         amenities_list = []
         for a in template_layout.get("amenities", []):
             label = a.get("label", a.get("id"))
             amenities_list.append(f"- ID: {a['id']}, Type: {a['type']}, Default Label: {label}")
         amenities_list_str = "\n".join(amenities_list)
-        
+
         total_towers = len(template_layout.get("towers", []))
-        
+
+        # Add site-analysis signals
+        site_context = ""
+        if boundary_poly:
+            xs = [p[0] for p in boundary_poly]
+            ys = [p[1] for p in boundary_poly]
+            bbox_w = max(xs) - min(xs)
+            bbox_h = max(ys) - min(ys)
+            site_orientation = "horizontal" if bbox_w > bbox_h else "vertical"
+            site_context += f"- Site long-axis orientation: {site_orientation}\n"
+
+        if boundary_geojson:
+            try:
+                geojson = json.loads(boundary_geojson) if isinstance(boundary_geojson, str) else boundary_geojson
+                coords = geojson.get("geometry", {}).get("coordinates", [[]])[0]
+                lats = [c[1] for c in coords]
+                if lats:
+                    avg_lat = sum(lats) / len(lats)
+                    sun_preference = "south-facing frontage preferred" if avg_lat > 0 else "north-facing frontage preferred"
+                    site_context += f"- Sun path: {sun_preference}\n"
+            except Exception:
+                pass
+
         formatted_prompt = USER_PROMPT_TEMPLATE.format(
             site_width_m=sw,
             site_height_m=sh,
-            towers_list=towers_list_str,
+            candidate_slots_list=candidate_slots_str,
             amenities_list=amenities_list_str,
             total_towers=total_towers
         )
         
         # Final assembly of prompt
-        user_prompt = user_reqs_str + boundary_context + formatted_prompt
+        user_prompt = user_reqs_str + boundary_context + site_context + formatted_prompt
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -243,7 +270,36 @@ async def suggest_layout(request: AiSuggestRequest, db: aiosqlite.Connection = D
                 end = content.rfind('}') + 1
                 if start >= 0 and end > start:
                     layout_json = json.loads(content[start:end])
-                    
+
+                    # Validate selected slot IDs
+                    selected_ids = layout_json.get("selected_tower_slots", [])
+                    candidate_pool = template_layout.get("candidate_slots", [])
+                    valid_slots, invalid_ids = resolve_selected_slots(selected_ids, candidate_pool)
+
+                    if invalid_ids:
+                        if attempt < MAX_ATTEMPTS - 1:
+                            err_msg = f"Invalid slot IDs selected: {invalid_ids}. Only use valid slot IDs from the provided pool."
+                            messages.append({"role": "assistant", "content": content})
+                            messages.append({"role": "user", "content": f"ERROR: {err_msg}. Please try again with valid slot IDs only."})
+                            continue
+                        else:
+                            raise HTTPException(status_code=400, detail=f"Invalid slot IDs: {invalid_ids}")
+
+                    # Map selected slots to tower positions
+                    if valid_slots:
+                        # Reorder towers based on Claude's selection order
+                        tower_configs = layout_json.get("towers", [])
+                        reordered_towers = []
+                        for i, slot in enumerate(valid_slots):
+                            if i < len(tower_configs):
+                                tower_config = tower_configs[i]
+                                tower_config["x_pct"] = round(slot["cx"] - slot["max_width_pct"] / 2, 4)
+                                tower_config["y_pct"] = round(slot["cy"] - slot["max_height_pct"] / 2, 4)
+                                tower_config["width_pct"] = slot["max_width_pct"]
+                                tower_config["height_pct"] = slot["max_height_pct"]
+                                reordered_towers.append(tower_config)
+                        layout_json["towers"] = reordered_towers
+
                     # Merge Claude's custom attributes into our safe procedural geometry template
                     merged_layout = merge_layout_choices(template_layout, layout_json)
                     merged_layout = resolve_layout(merged_layout, boundary_poly)
