@@ -1020,14 +1020,37 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
     for t in towers:
         tc_x = t["x_pct"] + t["width_pct"] / 2
         tc_y = t["y_pct"] + t["height_pct"] / 2
-        closest = min(ring_poly[:-1], key=lambda p: (p[0]-tc_x)**2 + (p[1]-tc_y)**2)
-        roads.append({
-            "id":           f"spur_{t['id']}",
-            "type":         "ring_secondary",
-            "width_meters": 6,
-            "points":       [[round(tc_x, 4), round(tc_y, 4)], [round(closest[0], 4), round(closest[1], 4)]],
-            "tension":      0.0,
-        })
+        
+        # Sort ring points by distance to tower center
+        sorted_ring_pts = sorted(ring_poly[:-1], key=lambda p: (p[0]-tc_x)**2 + (p[1]-tc_y)**2)
+        
+        chosen_conn = None
+        for candidate in sorted_ring_pts:
+            # Check containment of 10 sampled points along the spur segment
+            valid = True
+            for step in range(1, 10):
+                t_factor = step / 10.0
+                sx = tc_x + (candidate[0] - tc_x) * t_factor
+                sy = tc_y + (candidate[1] - tc_y) * t_factor
+                if not is_point_in_polygon(sx, sy, inset_poly):
+                    valid = False
+                    break
+            if valid:
+                chosen_conn = candidate
+                break
+                
+        # Fallback to the absolute closest one if no fully contained spur segment was found
+        if not chosen_conn and sorted_ring_pts:
+            chosen_conn = sorted_ring_pts[0]
+            
+        if chosen_conn:
+            roads.append({
+                "id":           f"spur_{t['id']}",
+                "type":         "ring_secondary",
+                "width_meters": 6,
+                "points":       [[round(tc_x, 4), round(tc_y, 4)], [round(chosen_conn[0], 4), round(chosen_conn[1], 4)]],
+                "tension":      0.0,
+            })
 
     # ── 6. Amenities — placed inside the inset polygon near the centroid ───────────────────
     clubhouse_w = min(40.0 / site_width_m,  0.12)
