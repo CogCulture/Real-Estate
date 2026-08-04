@@ -768,6 +768,59 @@ def _grid_cells_in_polygon(poly, cell_w, cell_h, pad_x=0, pad_y=0):
     return cells
 
 
+def _find_valid_amenity_position(w, h, used_positions, inset_poly, cx, cy):
+    # Try a grid of candidates
+    candidates = _grid_cells_in_polygon(inset_poly, w * 1.2, h * 1.2)
+    # Sort candidates by distance to centroid (prefer near centroid)
+    candidates.sort(key=lambda p: math.hypot(p[0] - cx, p[1] - cy))
+    
+    for cc_x, cc_y in candidates:
+        corners = [
+            (cc_x - w / 2, cc_y - h / 2),
+            (cc_x + w / 2, cc_y - h / 2),
+            (cc_x + w / 2, cc_y + h / 2),
+            (cc_x - w / 2, cc_y + h / 2),
+            (cc_x, cc_y)
+        ]
+        
+        all_inside = all(is_point_in_polygon(px, py, inset_poly) for px, py in corners)
+        if not all_inside:
+            continue
+            
+        # Check overlap
+        overlap = False
+        for ux, uy, uw, uh in used_positions:
+            if not (cc_x + w/2 < ux - uw/2 or cc_x - w/2 > ux + uw/2 or cc_y + h/2 < uy - uh/2 or cc_y - h/2 > uy + uh/2):
+                overlap = True
+                break
+        if not overlap:
+            return cc_x, cc_y
+            
+    # Spiral search
+    for r in [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]:
+        for angle in range(0, 360, 45):
+            rad = math.radians(angle)
+            cc_x = cx + math.cos(rad) * r
+            cc_y = cy + math.sin(rad) * r
+            corners = [
+                (cc_x - w / 2, cc_y - h / 2),
+                (cc_x + w / 2, cc_y - h / 2),
+                (cc_x + w / 2, cc_y + h / 2),
+                (cc_x - w / 2, cc_y + h / 2),
+                (cc_x, cc_y)
+            ]
+            if all(is_point_in_polygon(px, py, inset_poly) for px, py in corners):
+                overlap = False
+                for ux, uy, uw, uh in used_positions:
+                    if not (cc_x + w/2 < ux - uw/2 or cc_x - w/2 > ux + uw/2 or cc_y + h/2 < uy - uh/2 or cc_y - h/2 > uy + uh/2):
+                        overlap = True
+                        break
+                if not overlap:
+                    return cc_x, cc_y
+                    
+    return cx, cy
+
+
 def generate_procedural_fallback(site_width_m: float, site_height_m: float, project_features: dict = None, boundary_poly: list = None) -> dict:
     import random
 
@@ -976,38 +1029,50 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
             "tension":      0.0,
         })
 
-    # ── 6. Amenities — placed at centroid of inset poly ─────────────────────
+    # ── 6. Amenities — placed inside the inset polygon near the centroid ───────────────────
     clubhouse_w = min(40.0 / site_width_m,  0.12)
     clubhouse_h = min(25.0 / site_height_m, 0.08)
-    clubhouse_x = cx - clubhouse_w / 2
-    clubhouse_y = cy - clubhouse_h / 2 - 0.04 * bh
-
+    
     pool_w = min(25.0 / site_width_m,  0.08)
     pool_h = min(12.0 / site_height_m, 0.04)
-    pool_x = clubhouse_x + clubhouse_w + 0.015
-    pool_y = clubhouse_y + (clubhouse_h - pool_h) / 2
-
+    
     lawn_w = min(bw * 0.22, 0.14)
     lawn_h = min(bh * 0.22, 0.10)
-    lawn_x = cx - lawn_w / 2
-    lawn_y = cy + 0.05 * bh
-
+    
     tennis_w = min(24.0 / site_width_m,  0.07)
     tennis_h = min(11.0 / site_height_m, 0.04)
-    tennis_x = cx - 0.14 * bw - tennis_w
-    tennis_y = cy
-
+    
     kids_w = min(15.0 / site_width_m,  0.05)
     kids_h = min(15.0 / site_height_m, 0.05)
-    kids_x = cx + 0.10 * bw
-    kids_y = cy + 0.14 * bh
+
+    used_positions = []
+    for t in towers:
+        tw_val = t["width_pct"]
+        th_val = t["height_pct"]
+        tcx = t["x_pct"] + tw_val / 2
+        tcy = t["y_pct"] + th_val / 2
+        used_positions.append((tcx, tcy, tw_val, th_val))
+
+    ch_x, ch_y = _find_valid_amenity_position(clubhouse_w, clubhouse_h, used_positions, inset_poly, cx, cy)
+    used_positions.append((ch_x, ch_y, clubhouse_w, clubhouse_h))
+    
+    pool_x, pool_y = _find_valid_amenity_position(pool_w, pool_h, used_positions, inset_poly, ch_x, ch_y)
+    used_positions.append((pool_x, pool_y, pool_w, pool_h))
+    
+    lawn_x, lawn_y = _find_valid_amenity_position(lawn_w, lawn_h, used_positions, inset_poly, cx, cy)
+    used_positions.append((lawn_x, lawn_y, lawn_w, lawn_h))
+    
+    tennis_x, tennis_y = _find_valid_amenity_position(tennis_w, tennis_h, used_positions, inset_poly, cx, cy)
+    used_positions.append((tennis_x, tennis_y, tennis_w, tennis_h))
+    
+    kids_x, kids_y = _find_valid_amenity_position(kids_w, kids_h, used_positions, inset_poly, cx, cy)
 
     amenities = [
-        {"id": "clubhouse",    "type": "clubhouse",    "label": "Grand Clubhouse", "shape": "rect",    "x_pct": round(clubhouse_x, 4), "y_pct": round(clubhouse_y, 4), "width_pct": round(clubhouse_w, 4), "height_pct": round(clubhouse_h, 4)},
-        {"id": "swimming_pool","type": "pool",          "label": "Luxury Pool",     "shape": "rect",    "x_pct": round(pool_x,      4), "y_pct": round(pool_y,      4), "width_pct": round(pool_w,      4), "height_pct": round(pool_h,      4)},
-        {"id": "central_lawn", "type": "central_lawn",  "label": "Central Green",   "shape": "rect",    "x_pct": round(lawn_x,      4), "y_pct": round(lawn_y,      4), "width_pct": round(lawn_w,      4), "height_pct": round(lawn_h,      4)},
-        {"id": "tennis_court", "type": "sports",        "label": "Tennis Court",    "shape": "rect",    "x_pct": round(tennis_x,    4), "y_pct": round(tennis_y,    4), "width_pct": round(tennis_w,    4), "height_pct": round(tennis_h,    4)},
-        {"id": "kids_play",    "type": "kids",          "label": "Kids Play Zone",  "shape": "rect",    "x_pct": round(kids_x,      4), "y_pct": round(kids_y,      4), "width_pct": round(kids_w,      4), "height_pct": round(kids_h,      4)},
+        {"id": "clubhouse",    "type": "clubhouse",    "label": "Grand Clubhouse", "shape": "rect",    "x_pct": round(ch_x - clubhouse_w/2, 4), "y_pct": round(ch_y - clubhouse_h/2, 4), "width_pct": round(clubhouse_w, 4), "height_pct": round(clubhouse_h, 4)},
+        {"id": "swimming_pool","type": "pool",          "label": "Luxury Pool",     "shape": "rect",    "x_pct": round(pool_x - pool_w/2,      4), "y_pct": round(pool_y - pool_h/2,      4), "width_pct": round(pool_w,      4), "height_pct": round(pool_h,      4)},
+        {"id": "central_lawn", "type": "central_lawn",  "label": "Central Green",   "shape": "rect",    "x_pct": round(lawn_x - lawn_w/2,      4), "y_pct": round(lawn_y - lawn_h/2,      4), "width_pct": round(lawn_w,      4), "height_pct": round(lawn_h,      4)},
+        {"id": "tennis_court", "type": "sports",        "label": "Tennis Court",    "shape": "rect",    "x_pct": round(tennis_x - tennis_w/2,    4), "y_pct": round(tennis_y - tennis_h/2,    4), "width_pct": round(tennis_w,    4), "height_pct": round(tennis_h,    4)},
+        {"id": "kids_play",    "type": "kids",          "label": "Kids Play Zone",  "shape": "rect",    "x_pct": round(kids_x - kids_w/2,      4), "y_pct": round(kids_y - kids_h/2,      4), "width_pct": round(kids_w,      4), "height_pct": round(kids_h,      4)},
     ]
 
     # ── 7. Jogging track — polygon inset ────────────────────────────────────
