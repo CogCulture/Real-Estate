@@ -3768,8 +3768,8 @@ out skel qt;`;
       // Side name label pill placed outside the boundary, shifted along the edge to avoid overlap with dimension
       const ex = (x2 - x1) / edgeLen;
       const ey = (y2 - y1) / edgeLen;
-      const pillX = mx - nx * 16 - ex * 35;
-      const pillY = my - ny * 16 - ey * 35;
+      const pillX = mx - nx * 32 - ex * 50;
+      const pillY = my - ny * 32 - ey * 50;
 
       let edgeAngle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
       if (edgeAngle > 90)  edgeAngle -= 180;
@@ -3802,21 +3802,21 @@ out skel qt;`;
           }}
         >
           <Rect
-            x={-18}
-            y={-6}
-            width={36}
-            height={12}
-            cornerRadius={4}
+            x={-24}
+            y={-8}
+            width={48}
+            height={16}
+            cornerRadius={5}
             fill={pillFill}
             stroke={pillStroke}
-            strokeWidth={1}
+            strokeWidth={1.2}
           />
           <Text
-            x={-18}
-            y={-4.5}
-            width={36}
+            x={-24}
+            y={-5}
+            width={48}
             text={sideLabel}
-            fontSize={6.5} // Small enough text
+            fontSize={9}
             fontStyle="bold"
             fill={pillTextFill}
             align="center"
