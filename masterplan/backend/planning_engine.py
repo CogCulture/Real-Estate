@@ -1187,6 +1187,39 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
             if used >= num_towers:
                 break
 
+    # Calculate actual geometry-based land use percentages
+    tot_tower_area = sum((t["width_pct"] * site_width_m) * (t["height_pct"] * site_height_m) for t in towers)
+    res_pct = (tot_tower_area / buildable_area) * 100.0 if buildable_area > 0 else 0.0
+
+    tot_road_area = 0.0
+    for r in roads:
+        pts_r = r.get("points", [])
+        w_road = r.get("width_meters", 6.0)
+        road_len = 0.0
+        for idx in range(len(pts_r) - 1):
+            ptA = pts_r[idx]
+            ptB = pts_r[idx + 1]
+            dx_m = (ptB[0] - ptA[0]) * site_width_m
+            dy_m = (ptB[1] - ptA[1]) * site_height_m
+            road_len += math.sqrt(dx_m*dx_m + dy_m*dy_m)
+        tot_road_area += w_road * road_len
+    rd_pct = (tot_road_area / buildable_area) * 100.0 if buildable_area > 0 else 0.0
+
+    tot_amenity_area = sum((am["width_pct"] * site_width_m) * (am["height_pct"] * site_height_m) for am in amenities)
+    am_pct = (tot_amenity_area / buildable_area) * 100.0 if buildable_area > 0 else 0.0
+
+    pk_pct = green_area_pct
+    op_pct = max(0.0, 100.0 - res_pct - rd_pct - am_pct - pk_pct)
+
+    # Normalize to exactly 100%
+    total_pct = res_pct + rd_pct + am_pct + pk_pct + op_pct
+    if total_pct > 0.0:
+        res_pct = round((res_pct / total_pct) * 100.0, 2)
+        rd_pct = round((rd_pct / total_pct) * 100.0, 2)
+        am_pct = round((am_pct / total_pct) * 100.0, 2)
+        pk_pct = round((pk_pct / total_pct) * 100.0, 2)
+        op_pct = round(100.0 - res_pct - rd_pct - am_pct - pk_pct, 2)
+
     return {
         "project": {
             "name":                   name,
@@ -1198,11 +1231,11 @@ def generate_procedural_fallback(site_width_m: float, site_height_m: float, proj
             "utilization_pct":        0.0,
         },
         "land_use": {
-            "residential_pct":   round(actual_coverage_ratio * 100.0, 2),
-            "roads_pct":         12.0,
-            "amenities_pct":     8.0,
-            "open_spaces_pct":   round(100.0 - actual_coverage_ratio * 100.0 - 20.0, 2),
-            "parks_pct":         green_area_pct,
+            "residential_pct":   res_pct,
+            "roads_pct":         rd_pct,
+            "amenities_pct":     am_pct,
+            "open_spaces_pct":   op_pct,
+            "parks_pct":         pk_pct,
         },
         "entry_points":    entry_points,
         "roads":           roads,
